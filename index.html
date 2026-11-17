@@ -37,6 +37,21 @@
     .warning-lock { animation: pulse-red 0.4s infinite; }
     .bind-row { transition: border-color 0.15s ease, background 0.15s ease; }
     .bind-row.listening { border-color: rgba(251, 191, 36, 0.9); background: rgba(251, 191, 36, 0.16); }
+    #padCursor {
+      width: 22px;
+      height: 22px;
+      margin: -3px 0 0 -3px;
+      border: 2px solid #f8fafc;
+      border-radius: 999px;
+      box-shadow: 0 0 0 2px rgba(0,0,0,0.65), 0 0 12px rgba(56, 189, 248, 0.8);
+    }
+    #padCursor::before, #padCursor::after {
+      content: '';
+      position: absolute;
+      background: #f8fafc;
+    }
+    #padCursor::before { left: 8px; top: -6px; width: 2px; height: 30px; }
+    #padCursor::after { top: 8px; left: -6px; height: 2px; width: 30px; }
   </style>
 </head>
 <body class="relative w-full h-full">
@@ -168,6 +183,7 @@
         <button id="resetBindsBtn" class="text-[10px] font-bold text-amber-300 hover:text-amber-200 cursor-pointer">RESET DEFAULTS</button>
       </div>
       <p id="rebindHint" class="text-[10px] text-amber-300/90 mb-2 h-4"></p>
+      <p class="text-[10px] text-sky-200/70 mb-2">Controller: left stick flies, right stick aims, LT fires, RT rockets. Upgrades are the on-screen + button.</p>
       <div id="bindList" class="overflow-y-auto space-y-3 pr-1"></div>
     </div>
   </div>
@@ -578,6 +594,7 @@
             <div class="text-[11px] text-slate-300/70 mb-3 font-semibold">10 SECOND CLOAK</div>
             <ul class="text-[10px] space-y-1 text-gray-300">
               <li>• Hidden from other players, radar, and AI</li>
+              <li>• You move faster while cloaked</li>
               <li>• You see a gray ghost of yourself</li>
               <li>• No weapons, including automated ones</li>
               <li>• Hits still land. <b>20 second</b> cooldown</li>
@@ -735,6 +752,8 @@
     </div>
   </div>
 
+  <div id="padCursor" class="hidden pointer-events-none fixed z-[4000]"></div>
+
   <!-- GAME SCRIPT LOGIC -->
   <script>
     /* ========================================================================
@@ -809,6 +828,12 @@
       return val;
     }
 
+    function gatlingBulletDamage() {
+      const s = STATS.find(st => st.id === 'bulletDmg');
+      if (!s) return 7;
+      return s.base * 0.5 + s.val * s.step * 0.22;
+    }
+
     function isStealthAirframe() {
       return localPlayer.playerClass === 'STEALTH' || localPlayer.heliModel === 'STEALTH_GUNSHIP';
     }
@@ -832,6 +857,7 @@
     const tctx = tacticalCanvas ? tacticalCanvas.getContext('2d') : null;
 
     const mouse = { screenX: 0, screenY: 0, worldX: 0, worldY: 0, downLeft: false, downRight: false, downMiddle: false, downExtra: {} };
+    const padState = { flyX: 0, flyY: 0, aim: false, cursorX: 0, cursorY: 0, buttons: [], ltOnUi: false, ownsGun: false, ownsRocket: false, hover: null };
     const keys = {};
     const DEFAULT_BINDS = {
       up: 'KeyW', down: 'KeyS', left: 'KeyA', right: 'KeyD',
@@ -1116,6 +1142,10 @@
 
     window.addEventListener('mousemove', (e) => {
       noteActivity();
+      if (padState.aim && Math.hypot(e.movementX || 0, e.movementY || 0) < 2) return;
+      padState.aim = false;
+      const cursor = document.getElementById('padCursor');
+      if (cursor) cursor.classList.add('hidden');
       mouse.screenX = e.clientX; mouse.screenY = e.clientY;
       mouse.worldX = (e.clientX - canvas.width / 2) / currentZoom + camera.x;
       mouse.worldY = (e.clientY - canvas.height / 2) / currentZoom + camera.y;
@@ -1272,7 +1302,14 @@
           [bindLabel(binds.chat), 'Multiplayer Chat'],
           ['ENTER', 'Engage Combat'],
           ['ESC', 'Game Menu'],
-          [upgradeLabels.join(' '), 'Upgrade Hotkeys']
+          [upgradeLabels.join(' '), 'Upgrade Hotkeys'],
+          ['L STICK / R STICK', 'Fly / Aim'],
+          ['LT / RT', 'Gun / Rockets'],
+          ['LB / RB', 'Flares / Drone Mode'],
+          ['Y / X', 'Level 25 Power / Level 60 Power'],
+          ['A / B', 'Hold Auto Weapons / Menu'],
+          ['D-PAD UP / DOWN', 'Tactical Map / Chat'],
+          ['R STICK + LT', 'Move Onto + And Click Upgrades']
         ];
         hints.innerHTML = lines.map(([key, desc]) => `<p>• <b>${key}</b> - ${desc}</p>`).join('');
       }
@@ -1901,6 +1938,155 @@
     });
 
     window.addEventListener('blur', clearHeldInputs);
+
+    function connectedGamepad() {
+      const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+      for (let i = 0; i < pads.length; i++) {
+        if (pads[i] && pads[i].connected) return pads[i];
+      }
+      return null;
+    }
+
+    function stickAxis(value) {
+      const dead = 0.18;
+      const v = value || 0;
+      if (Math.abs(v) < dead) return 0;
+      const sign = v < 0 ? -1 : 1;
+      return sign * (Math.abs(v) - dead) / (1 - dead);
+    }
+
+    function padPressed(gp, index) {
+      const button = gp.buttons[index];
+      return !!(button && (button.pressed || button.value > 0.5));
+    }
+
+    function placePadCursor() {
+      padState.cursorX = Math.max(0, Math.min(canvas.width, padState.cursorX));
+      padState.cursorY = Math.max(0, Math.min(canvas.height, padState.cursorY));
+      mouse.screenX = padState.cursorX;
+      mouse.screenY = padState.cursorY;
+      mouse.worldX = (padState.cursorX - canvas.width / 2) / currentZoom + camera.x;
+      mouse.worldY = (padState.cursorY - canvas.height / 2) / currentZoom + camera.y;
+      const cursor = document.getElementById('padCursor');
+      if (cursor) {
+        cursor.classList.remove('hidden');
+        cursor.style.left = padState.cursorX + 'px';
+        cursor.style.top = padState.cursorY + 'px';
+      }
+    }
+
+    function uiUnderPadCursor() {
+      const el = document.elementFromPoint(padState.cursorX, padState.cursorY);
+      if (!el || el.id === 'padCursor') return null;
+      const hit = el.closest('button, input, textarea, select, a');
+      if (!hit || hit.disabled) return null;
+      return hit;
+    }
+
+    function setPadHover(hit) {
+      if (padState.hover === hit) return;
+      if (padState.hover) padState.hover.style.outline = '';
+      padState.hover = hit;
+      if (hit) hit.style.outline = '2px solid #fbbf24';
+    }
+
+    function padBack() {
+      const typing = document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA');
+      if (typing) {
+        document.activeElement.blur();
+        return;
+      }
+      const modal = document.querySelector('.modal-overlay.active');
+      if (modal && modal.id !== 'pauseOverlay' && modal.id !== 'settingsOverlay' && modal.id !== 'feedbackOverlay' && modal.id !== 'tacticalMapOverlay') return;
+      handleEscape();
+    }
+
+    function pollGamepad(now) {
+      const dt = Math.min(3, ((now || performance.now()) - (pollGamepad.last || now || performance.now())) / 16.66) || 1;
+      pollGamepad.last = now || performance.now();
+      const gp = connectedGamepad();
+      if (!gp) {
+        padState.flyX = 0;
+        padState.flyY = 0;
+        if (padState.ownsGun) mouse.downLeft = false;
+        if (padState.ownsRocket) mouse.downRight = false;
+        padState.ownsGun = false;
+        padState.ownsRocket = false;
+        padState.buttons = [];
+        setPadHover(null);
+        requestAnimationFrame(pollGamepad);
+        return;
+      }
+
+      const flyX = stickAxis(gp.axes[0]);
+      const flyY = stickAxis(gp.axes[1]);
+      const aimX = stickAxis(gp.axes[2]);
+      const aimY = stickAxis(gp.axes[3]);
+      padState.flyX = flyX;
+      padState.flyY = flyY;
+      if (aimX || aimY) {
+        if (!padState.aim) {
+          padState.cursorX = mouse.screenX || canvas.width / 2;
+          padState.cursorY = mouse.screenY || canvas.height / 2;
+        }
+        padState.aim = true;
+        const scale = 22 * dt;
+        padState.cursorX += Math.sign(aimX) * Math.pow(Math.abs(aimX), 1.3) * scale;
+        padState.cursorY += Math.sign(aimY) * Math.pow(Math.abs(aimY), 1.3) * scale;
+      }
+      if (padState.aim) placePadCursor();
+
+      const was = padState.buttons;
+      const down = [];
+      for (let i = 0; i < gp.buttons.length; i++) down[i] = padPressed(gp, i);
+      const edge = (index) => down[index] && !was[index];
+      const typing = document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA');
+      const modalOpen = !!document.querySelector('.modal-overlay.active');
+      const playing = gameState === 'PLAYING' && !modalOpen && !typing;
+      const hit = padState.aim ? uiUnderPadCursor() : null;
+      setPadHover(hit);
+
+      if (edge(6)) {
+        padState.ltOnUi = !!hit;
+        if (hit) hit.click();
+        else if (playing) {
+          padState.ownsGun = true;
+          mouse.downLeft = true;
+          triggerPress('MouseLeft');
+        }
+      } else if (down[6] && padState.ownsGun && playing) {
+        mouse.downLeft = true;
+      } else if (padState.ownsGun) {
+        mouse.downLeft = false;
+        padState.ownsGun = false;
+        padState.ltOnUi = false;
+      }
+
+      if (edge(7)) {
+        if (!hit && playing) {
+          padState.ownsRocket = true;
+          mouse.downRight = true;
+          triggerPress('MouseRight');
+        }
+      } else if (!down[7] && padState.ownsRocket) {
+        mouse.downRight = false;
+        padState.ownsRocket = false;
+      }
+
+      if (edge(1) || edge(9)) padBack();
+      if (playing) {
+        if (edge(4)) launchFlares();
+        if (edge(5)) toggleDroneMode();
+        if (edge(3)) usePower();
+        if (edge(2)) usePower2();
+        if (edge(0)) toggleWeaponsHold();
+        if (edge(12)) toggleTacticalMap();
+        if (edge(13)) openChat();
+      }
+      padState.buttons = down;
+      if (flyX || flyY || aimX || aimY || down.some(Boolean)) noteActivity();
+      requestAnimationFrame(pollGamepad);
+    }
 
     function toggleTacticalMap() {
       if (gameState !== 'PLAYING') return;
@@ -4013,9 +4199,8 @@
           continue;
         }
 
-        if (!localPlayer.weaponsHold && !offenseLocked() && target && d.fireCooldown <= 0 && localPlayer.droneShotGap <= 0) {
+        if (!localPlayer.weaponsHold && !offenseLocked() && target && d.fireCooldown <= 0) {
           d.fireCooldown = 14;
-          localPlayer.droneShotGap = 15;
           const b = {
             ownerId: localPlayer.id,
             fromDrone: true,
@@ -4146,8 +4331,7 @@
       localPlayer.fireCooldown = isGatling ? (highRpm ? 2.5 : 4) : 14;
       audio.play('gun', localPlayer.x, localPlayer.y);
       
-      const baseDmg = getStatVal('bulletDmg');
-      const bDmg = isGatling ? baseDmg * 0.5 : baseDmg;
+      const bDmg = isGatling ? gatlingBulletDamage() : getStatVal('bulletDmg');
       const offsets = dual ? [-4.6, 4.6] : [0];
       offsets.forEach(off => {
         const px = Math.cos(localPlayer.angle) * 34 + Math.cos(localPlayer.angle + Math.PI / 2) * off;
@@ -4174,7 +4358,7 @@
         sideGun: true,
         x: localPlayer.x + offsetX, y: localPlayer.y + offsetY,
         vx: Math.cos(angle) * bulletSpeed + localPlayer.vx * 0.3, vy: Math.sin(angle) * bulletSpeed + localPlayer.vy * 0.3,
-        damage: getStatVal('bulletDmg') * (gatling ? 0.5 : 1), life: speed ? 122 : 100
+        damage: gatling ? gatlingBulletDamage() : getStatVal('bulletDmg'), life: speed ? 122 : 100
       };
       bullets.push(b);
       spawnMuzzle(b.x, b.y, angle, !!gatling);
@@ -4516,14 +4700,19 @@
       }
       if (gameState === 'PLAYING') {
         if (localPlayer.spawnGuard > 0) localPlayer.spawnGuard = Math.max(0, localPlayer.spawnGuard - dt);
-        const accel = getStatVal('speed') * 0.22;
+        const cloaked = (localPlayer.cloak || 0) > 0;
+        const accel = getStatVal('speed') * 0.22 * (cloaked ? 1.22 : 1);
         let moveX = 0, moveY = 0;
         if (isInputHeld(binds.up)) moveY -= 1; if (isInputHeld(binds.down)) moveY += 1;
         if (isInputHeld(binds.left)) moveX -= 1; if (isInputHeld(binds.right)) moveX += 1;
-        if (moveX !== 0 && moveY !== 0) { moveX *= 0.7071; moveY *= 0.7071; }
+        if (moveX !== 0 && moveY !== 0 && !padState.flyX && !padState.flyY) { moveX *= 0.7071; moveY *= 0.7071; }
+        moveX += padState.flyX;
+        moveY += padState.flyY;
+        const moveMag = Math.hypot(moveX, moveY);
+        if (moveMag > 1) { moveX /= moveMag; moveY /= moveMag; }
 
         localPlayer.vx += moveX * accel * dt; localPlayer.vy += moveY * accel * dt;
-        localPlayer.vx *= Math.pow(0.92, dt); localPlayer.vy *= Math.pow(0.92, dt);
+        localPlayer.vx *= Math.pow(cloaked ? 0.948 : 0.92, dt); localPlayer.vy *= Math.pow(cloaked ? 0.948 : 0.92, dt);
         localPlayer.x += localPlayer.vx * dt; localPlayer.y += localPlayer.vy * dt;
 
         localPlayer.x = Math.max(BORDER_MARGIN, Math.min(WORLD_SIZE - BORDER_MARGIN, localPlayer.x));
@@ -5065,6 +5254,7 @@
           }
 
           slideOffRocks(u);
+          rollTracks(u, Math.hypot(u.vx, u.vy) * dt);
           u.x += u.vx * dt; u.y += u.vy * dt;
           const minB = BORDER_MARGIN + u.radius; const maxB = WORLD_SIZE - BORDER_MARGIN - u.radius;
           if (u.x < minB) { u.x = minB; u.vx = Math.abs(u.vx); u.orbitDir *= -1; }
@@ -5129,6 +5319,11 @@
       Object.keys(missileAlerted).forEach(id => { if (!active[id]) delete missileAlerted[id]; });
     }
 
+    function rollTracks(u, dist) {
+      if (!u || (u.type !== 'TANK' && u.type !== 'SAM_TANK')) return;
+      u.trackPhase = (u.trackPhase || 0) + dist * 0.46;
+    }
+
     function lerpAngle(current, target, t) {
       if (target === undefined || target === null || Number.isNaN(target)) return current || 0;
       let diff = target - (current || 0);
@@ -5150,7 +5345,10 @@
         pveUnits.forEach(u => {
           u.rotorAngle = (u.rotorAngle || 0) + 0.45 * dt;
           if (u.netX === undefined) return;
-          u.x += (u.netX - u.x) * follow;
+          const stepX = (u.netX - u.x) * follow;
+          const stepY = (u.netY - u.y) * follow;
+          rollTracks(u, Math.hypot(stepX, stepY));
+          u.x += stepX;
           u.y += (u.netY - u.y) * follow;
           u.angle = lerpAngle(u.angle, u.netAngle, follow);
           if (u.netTurret !== undefined) u.turretAngle = lerpAngle(u.turretAngle, u.netTurret, follow);
@@ -5233,13 +5431,29 @@
             ctx.stroke();
           }
 
-          if (terrainHash(ix + 21, iy + 2) < 0.18) {
-            ctx.fillStyle = '#2a3324';
-            for (let i = 0; i < 4; i++) {
-              const sx = x + 40 + terrainHash(ix + i, iy + 9) * (cell - 80);
-              const sy = y + 40 + terrainHash(ix + 6, iy + i) * (cell - 80);
+          if (terrainHash(ix + 21, iy + 2) < 0.28) {
+            for (let i = 0; i < 3; i++) {
+              const sx = x + 36 + terrainHash(ix + i, iy + 9) * (cell - 72);
+              const sy = y + 36 + terrainHash(ix + 6, iy + i) * (cell - 72);
+              ctx.fillStyle = 'rgba(0,0,0,0.22)';
               ctx.beginPath();
-              ctx.ellipse(sx, sy, 7 + i, 4, 0.5, 0, Math.PI * 2);
+              ctx.ellipse(sx + 5, sy + 7, 8, 3.2, 0, 0, Math.PI * 2);
+              ctx.fill();
+              ctx.fillStyle = '#3f2a1a';
+              ctx.fillRect(sx - 1.2, sy - 2, 2.4, 8);
+              ctx.fillStyle = '#14532d';
+              ctx.beginPath();
+              ctx.moveTo(sx, sy - 18);
+              ctx.lineTo(sx + 9, sy);
+              ctx.lineTo(sx - 9, sy);
+              ctx.closePath();
+              ctx.fill();
+              ctx.fillStyle = '#166534';
+              ctx.beginPath();
+              ctx.moveTo(sx, sy - 24);
+              ctx.lineTo(sx + 6, sy - 10);
+              ctx.lineTo(sx - 6, sy - 10);
+              ctx.closePath();
               ctx.fill();
             }
           }
@@ -5249,6 +5463,24 @@
       ctx.save();
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
+      for (let r = 0; r < 2; r++) {
+        const seed = 900 + r * 3400;
+        const wobble = 0.0009 + r * 0.0004;
+        ctx.beginPath();
+        let started = false;
+        for (let x = Math.max(0, left); x <= Math.min(WORLD_SIZE, right); x += 48) {
+          const y = seed + Math.sin(x * wobble) * 380 + Math.sin(x * 0.00018 + r) * 220;
+          if (y < top - 80 || y > bottom + 80) { started = false; continue; }
+          if (!started) { ctx.moveTo(x, y); started = true; }
+          else ctx.lineTo(x, y);
+        }
+        ctx.strokeStyle = 'rgba(12, 48, 58, 0.9)';
+        ctx.lineWidth = 36;
+        ctx.stroke();
+        ctx.strokeStyle = 'rgba(125, 211, 192, 0.35)';
+        ctx.lineWidth = 5;
+        ctx.stroke();
+      }
       for (let r = 0; r < 3; r++) {
         const seed = 1400 + r * 2600;
         const wobble = 0.0011 + r * 0.00035;
@@ -5260,12 +5492,20 @@
           if (!started) { ctx.moveTo(x, y); started = true; }
           else ctx.lineTo(x, y);
         }
-        ctx.strokeStyle = 'rgba(14, 42, 48, 0.85)';
-        ctx.lineWidth = 34;
+        ctx.strokeStyle = 'rgba(120, 98, 62, 0.4)';
+        ctx.lineWidth = 30;
         ctx.stroke();
-        ctx.strokeStyle = 'rgba(86, 140, 132, 0.35)';
-        ctx.lineWidth = 6;
+        ctx.strokeStyle = '#3f3f46';
+        ctx.lineWidth = 16;
         ctx.stroke();
+        ctx.strokeStyle = 'rgba(82, 82, 91, 0.9)';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+        ctx.setLineDash([16, 20]);
+        ctx.strokeStyle = 'rgba(253, 230, 138, 0.45)';
+        ctx.lineWidth = 1.3;
+        ctx.stroke();
+        ctx.setLineDash([]);
       }
       ctx.restore();
 
@@ -5434,35 +5674,48 @@
 
     function drawMainRotor(radius, angle, blades) {
       const count = blades || 4;
+      ctx.fillStyle = '#1e293b';
+      ctx.fillRect(-1.3, -2, 2.6, -7);
       ctx.save();
       ctx.rotate(angle);
-      ctx.globalAlpha = 0.14;
-      ctx.fillStyle = '#e2e8f0';
+      const disc = ctx.createRadialGradient(0, 0, radius * 0.15, 0, 0, radius);
+      disc.addColorStop(0, 'rgba(226, 232, 240, 0.16)');
+      disc.addColorStop(0.7, 'rgba(148, 163, 184, 0.08)');
+      disc.addColorStop(1, 'rgba(226, 232, 240, 0)');
+      ctx.fillStyle = disc;
       ctx.beginPath();
       ctx.arc(0, 0, radius, 0, Math.PI * 2);
       ctx.fill();
-      ctx.globalAlpha = 0.92;
       const step = (Math.PI * 2) / count;
       for (let i = 0; i < count; i++) {
         ctx.rotate(step);
-        ctx.fillStyle = '#e2e8f0';
+        ctx.fillStyle = 'rgba(226,232,240,0.22)';
         ctx.beginPath();
-        ctx.ellipse(radius * 0.5, 0, radius * 0.46, 1.8, 0, 0, Math.PI * 2);
+        ctx.ellipse(radius * 0.5, 1.4, radius * 0.46, 2.6, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#f8fafc';
+        ctx.beginPath();
+        ctx.moveTo(6, -1.1);
+        ctx.lineTo(radius - 2, -0.7);
+        ctx.lineTo(radius, 0);
+        ctx.lineTo(radius - 2, 0.9);
+        ctx.lineTo(6, 1.1);
+        ctx.closePath();
         ctx.fill();
         ctx.fillStyle = '#64748b';
-        ctx.fillRect(8, -0.7, radius * 0.28, 1.3);
+        ctx.fillRect(10, -0.45, radius * 0.35, 0.9);
       }
       ctx.restore();
       ctx.fillStyle = '#0f172a';
       ctx.beginPath();
-      ctx.arc(0, 0, 4.4, 0, Math.PI * 2);
+      ctx.arc(0, 0, 4.6, 0, Math.PI * 2);
       ctx.fill();
-      ctx.strokeStyle = '#94a3b8';
-      ctx.lineWidth = 1;
+      ctx.strokeStyle = '#cbd5e1';
+      ctx.lineWidth = 1.1;
       ctx.stroke();
-      ctx.fillStyle = '#cbd5e1';
+      ctx.fillStyle = '#e2e8f0';
       ctx.beginPath();
-      ctx.arc(0, 0, 1.8, 0, Math.PI * 2);
+      ctx.arc(0, 0, 1.7, 0, Math.PI * 2);
       ctx.fill();
     }
 
@@ -5487,9 +5740,13 @@
     }
 
     function drawAircraftShadow(len, wid) {
-      ctx.fillStyle = 'rgba(0,0,0,0.38)';
+      ctx.fillStyle = 'rgba(0,0,0,0.18)';
       ctx.beginPath();
-      ctx.ellipse(6, 16, len, wid, 0, 0, Math.PI * 2);
+      ctx.ellipse(10, 22, len * 1.05, wid * 1.15, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = 'rgba(0,0,0,0.34)';
+      ctx.beginPath();
+      ctx.ellipse(7, 16, len, wid, 0, 0, Math.PI * 2);
       ctx.fill();
     }
 
@@ -5552,7 +5809,7 @@
       ctx.beginPath();
       ctx.ellipse(length * 0.16, 0, 10, 5.6, 0, 0, Math.PI * 2);
       ctx.fill();
-      ctx.strokeStyle = '#020617';
+      ctx.strokeStyle = '#cbd5e1';
       ctx.lineWidth = 1;
       ctx.stroke();
       ctx.beginPath();
@@ -5561,6 +5818,34 @@
       ctx.moveTo(length * 0.2, -4.2);
       ctx.lineTo(length * 0.2, 4.2);
       ctx.stroke();
+
+      ctx.fillStyle = mixHex(camo, -0.5);
+      ctx.globalAlpha = 0.45;
+      ctx.beginPath();
+      ctx.ellipse(-length * 0.02, width * 0.08, length * 0.2, width * 0.55, 0.15, 0, Math.PI);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = mixHex(camo, 0.18);
+      ctx.beginPath();
+      ctx.ellipse(-length * 0.1, -width * 0.22, length * 0.14, width * 0.28, -0.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(15, 23, 42, 0.35)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+
+      ctx.strokeStyle = '#0f172a';
+      ctx.lineWidth = 1.7;
+      [-1, 1].forEach(side => {
+        const rail = side * (width + 2.4);
+        ctx.beginPath();
+        ctx.moveTo(length * 0.18, side * width * 0.55);
+        ctx.lineTo(length * 0.18, rail);
+        ctx.lineTo(-length * 0.32, rail);
+        ctx.lineTo(-length * 0.32, side * width * 0.55);
+        ctx.stroke();
+      });
+      ctx.fillStyle = '#334155';
+      ctx.fillRect(-1.4, -2.2, 2.8, -6);
 
       ctx.strokeStyle = 'rgba(15, 23, 42, 0.45)';
       ctx.beginPath();
@@ -5630,6 +5915,112 @@
       const ratio = Math.max(0, hp / maxHp);
       ctx.fillStyle = isPlayer ? (ratio > 0.5 ? '#22c55e' : (ratio > 0.2 ? '#f59e0b' : '#ef4444')) : (ratio > 0.5 ? '#ef4444' : '#f97316');
       ctx.fillRect(-19, 1, 38 * ratio, 3);
+      ctx.restore();
+    }
+
+    function drawGroundVehicle(u) {
+      const sam = u.type === 'SAM_TANK';
+      const hull = u.hullAngle !== undefined ? u.hullAngle : u.angle;
+      const phase = u.trackPhase || 0;
+      ctx.save();
+      ctx.translate(u.x, u.y);
+      ctx.fillStyle = 'rgba(0,0,0,0.28)';
+      ctx.beginPath();
+      ctx.ellipse(5, 12, 28, 16, hull, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.rotate(hull);
+
+      [-1, 1].forEach(side => {
+        ctx.fillStyle = '#0f172a';
+        ctx.fillRect(-24, side * 11.5, 48, 7);
+        ctx.fillStyle = '#1f2937';
+        ctx.fillRect(-22, side * 12.2, 44, 5.2);
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(-21, side * 12.4, 42, 4.6);
+        ctx.clip();
+        for (let i = -4; i <= 8; i++) {
+          const x = -21 + ((i * 7 + phase) % 49);
+          ctx.strokeStyle = 'rgba(203, 213, 225, 0.55)';
+          ctx.lineWidth = 1.3;
+          ctx.beginPath();
+          ctx.moveTo(x, side * 12.5);
+          ctx.lineTo(x + 3.2, side * 16.8);
+          ctx.stroke();
+        }
+        ctx.restore();
+        ctx.fillStyle = '#334155';
+        [-16, -6, 4, 14].forEach(wx => {
+          ctx.beginPath();
+          ctx.arc(wx, side * 15, 2.3, 0, Math.PI * 2);
+          ctx.fill();
+        });
+      });
+
+      const armor = ctx.createLinearGradient(0, -12, 0, 12);
+      armor.addColorStop(0, sam ? '#7f1d1d' : '#64748b');
+      armor.addColorStop(0.45, sam ? '#b91c1c' : '#94a3b8');
+      armor.addColorStop(1, sam ? '#450a0a' : '#1e293b');
+      ctx.fillStyle = armor;
+      ctx.beginPath();
+      ctx.moveTo(20, 0);
+      ctx.lineTo(14, -10);
+      ctx.lineTo(-16, -11);
+      ctx.lineTo(-22, -6);
+      ctx.lineTo(-22, 6);
+      ctx.lineTo(-16, 11);
+      ctx.lineTo(14, 10);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(15, 23, 42, 0.65)';
+      ctx.lineWidth = 1.2;
+      ctx.stroke();
+      ctx.fillStyle = 'rgba(255,255,255,0.14)';
+      ctx.beginPath();
+      ctx.moveTo(12, -2);
+      ctx.lineTo(8, -8);
+      ctx.lineTo(-12, -8);
+      ctx.lineTo(-8, -2);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+
+      ctx.save();
+      ctx.translate(u.x, u.y);
+      ctx.rotate(u.turretAngle !== undefined ? u.turretAngle : u.angle);
+      if (sam) {
+        ctx.fillStyle = '#7f1d1d';
+        ctx.beginPath();
+        ctx.moveTo(8, 0);
+        ctx.lineTo(4, -8);
+        ctx.lineTo(-8, -7);
+        ctx.lineTo(-8, 7);
+        ctx.lineTo(4, 8);
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = '#111827';
+        [-5.2, -1.7, 1.7, 5.2].forEach(off => {
+          ctx.fillRect(4, off - 1.15, 18, 2.3);
+          ctx.fillStyle = '#fecaca';
+          ctx.fillRect(20, off - 0.7, 3.2, 1.4);
+          ctx.fillStyle = '#111827';
+        });
+      } else {
+        const turret = ctx.createLinearGradient(-8, -8, 8, 8);
+        turret.addColorStop(0, '#cbd5e1');
+        turret.addColorStop(0.5, '#64748b');
+        turret.addColorStop(1, '#1e293b');
+        ctx.fillStyle = turret;
+        ctx.beginPath();
+        ctx.ellipse(-1, 0, 11, 9, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#0f172a';
+        ctx.fillRect(6, -2.1, 20, 4.2);
+        ctx.fillStyle = '#e2e8f0';
+        ctx.fillRect(24, -1.2, 4, 2.4);
+        ctx.fillStyle = '#334155';
+        ctx.fillRect(8, -3.2, 3, 6.4);
+      }
       ctx.restore();
     }
 
@@ -5902,6 +6293,15 @@
       ctx.strokeStyle = '#a855f7';
       ctx.lineWidth = 1.2;
       ctx.stroke();
+      ctx.fillStyle = 'rgba(244, 244, 245, 0.16)';
+      ctx.beginPath();
+      ctx.moveTo(22, -1);
+      ctx.lineTo(6, -5);
+      ctx.lineTo(-10, -11);
+      ctx.lineTo(-18, -3);
+      ctx.lineTo(4, -1);
+      ctx.closePath();
+      ctx.fill();
       ctx.strokeStyle = 'rgba(192, 132, 252, 0.45)';
       ctx.beginPath();
       ctx.moveTo(18, 0);
@@ -6020,7 +6420,7 @@
       const h = tacticalCanvas.height;
 
       tctx.clearRect(0, 0, w, h);
-      tctx.fillStyle = '#243024';
+      tctx.fillStyle = '#1c2a1c';
       tctx.fillRect(0, 0, w, h);
 
       const scaleX = w / WORLD_SIZE;
@@ -6029,14 +6429,26 @@
       for (let x = 0; x < WORLD_SIZE; x += cell) {
         for (let y = 0; y < WORLD_SIZE; y += cell) {
           const hsh = terrainHash(x / cell, y / cell);
-          tctx.fillStyle = hsh < 0.42 ? 'rgba(16, 32, 22, 0.55)' : (hsh > 0.72 ? 'rgba(92, 86, 52, 0.28)' : 'rgba(0,0,0,0)');
-          tctx.beginPath();
-          tctx.ellipse((x + cell * 0.5) * scaleX, (y + cell * 0.5) * scaleY, cell * 0.36 * scaleX, cell * 0.24 * scaleY, 0, 0, Math.PI * 2);
-          tctx.fill();
+          tctx.fillStyle = hsh < 0.42 ? 'rgba(12, 42, 28, 0.72)' : (hsh > 0.72 ? 'rgba(120, 98, 52, 0.38)' : 'rgba(34, 58, 34, 0.35)');
+          tctx.fillRect(x * scaleX, y * scaleY, cell * scaleX + 1, cell * scaleY + 1);
         }
       }
-      tctx.strokeStyle = 'rgba(86, 140, 132, 0.45)';
-      tctx.lineWidth = 2;
+      tctx.save();
+      tctx.lineCap = 'round';
+      for (let r = 0; r < 2; r++) {
+        const seed = 900 + r * 3400;
+        const wobble = 0.0009 + r * 0.0004;
+        tctx.beginPath();
+        for (let x = 0; x <= WORLD_SIZE; x += 200) {
+          const y = seed + Math.sin(x * wobble) * 380 + Math.sin(x * 0.00018 + r) * 220;
+          const px = x * scaleX;
+          const py = y * scaleY;
+          if (x === 0) tctx.moveTo(px, py); else tctx.lineTo(px, py);
+        }
+        tctx.strokeStyle = 'rgba(45, 212, 191, 0.55)';
+        tctx.lineWidth = 3;
+        tctx.stroke();
+      }
       for (let r = 0; r < 3; r++) {
         const seed = 1400 + r * 2600;
         const wobble = 0.0011 + r * 0.00035;
@@ -6047,8 +6459,11 @@
           const py = y * scaleY;
           if (x === 0) tctx.moveTo(px, py); else tctx.lineTo(px, py);
         }
+        tctx.strokeStyle = 'rgba(212, 212, 216, 0.55)';
+        tctx.lineWidth = 2;
         tctx.stroke();
       }
+      tctx.restore();
 
       tctx.strokeStyle = 'rgba(6, 182, 212, 0.15)';
       tctx.lineWidth = 1;
@@ -6075,6 +6490,24 @@
         tctx.fillStyle = heavy ? '#fbbf24' : 'rgba(180, 83, 9, 0.4)';
         const mark = heavy ? 3 : 2;
         tctx.fillRect(c.x * scaleX - mark / 2, c.y * scaleY - mark / 2, mark, mark);
+      });
+
+      pveUnits.forEach(u => {
+        if (!u || u.hp <= 0) return;
+        const air = u.type === 'CHOPPER' || u.type === 'ATTACK_CHOPPER';
+        tctx.save();
+        tctx.translate(u.x * scaleX, u.y * scaleY);
+        tctx.rotate(air ? (u.angle || 0) : (u.hullAngle || u.angle || 0));
+        tctx.fillStyle = air ? '#f87171' : (u.type === 'SAM_TANK' ? '#fb7185' : '#e2e8f0');
+        tctx.fillRect(air ? -4 : -5, -2.2, air ? 8 : 10, 4.4);
+        tctx.restore();
+      });
+      Object.values(remotePlayers).forEach(rp => {
+        if (!(rp.hp > 0) || rp.cloak > 0) return;
+        tctx.fillStyle = rp.color || '#22c55e';
+        tctx.beginPath();
+        tctx.arc(rp.x * scaleX, rp.y * scaleY, 4, 0, Math.PI * 2);
+        tctx.fill();
       });
 
       if (isStealthAirframe()) {
@@ -6202,49 +6635,7 @@
       // PvE Units
       pveUnits.forEach(u => {
         if (u.type === 'TANK' || u.type === 'SAM_TANK') {
-          const sam = u.type === 'SAM_TANK';
-          ctx.save();
-          ctx.translate(u.x, u.y);
-          ctx.rotate(u.hullAngle !== undefined ? u.hullAngle : u.angle);
-          ctx.fillStyle = 'rgba(0,0,0,0.35)';
-          ctx.beginPath(); ctx.ellipse(2, 8, 24, 14, 0, 0, Math.PI * 2); ctx.fill();
-          ctx.fillStyle = sam ? '#3f1212' : '#1e293b';
-          ctx.fillRect(-22, -16, 44, 32);
-          ctx.fillStyle = sam ? '#7f1d1d' : '#475569';
-          ctx.fillRect(-16, -11, 32, 22);
-          ctx.fillStyle = '#0f172a';
-          ctx.fillRect(-20, -16, 40, 5);
-          ctx.fillRect(-20, 11, 40, 5);
-          ctx.strokeStyle = '#64748b';
-          ctx.lineWidth = 1;
-          for (let i = -16; i <= 16; i += 6) {
-            ctx.beginPath();
-            ctx.moveTo(i, -16); ctx.lineTo(i, -11);
-            ctx.moveTo(i, 11); ctx.lineTo(i, 16);
-            ctx.stroke();
-          }
-          ctx.restore();
-          ctx.save();
-          ctx.translate(u.x, u.y);
-          ctx.rotate(u.turretAngle !== undefined ? u.turretAngle : u.angle);
-          if (sam) {
-            ctx.fillStyle = '#991b1b';
-            ctx.beginPath(); ctx.arc(0, 0, 9, 0, Math.PI * 2); ctx.fill();
-            ctx.fillStyle = '#0f172a';
-            ctx.fillRect(6, -7, 16, 4);
-            ctx.fillRect(6, 3, 16, 4);
-            ctx.fillStyle = '#fecaca';
-            ctx.fillRect(20, -6.4, 5, 2.8);
-            ctx.fillRect(20, 3.6, 5, 2.8);
-          } else {
-            ctx.fillStyle = '#334155';
-            ctx.beginPath(); ctx.arc(-1, 0, 10, 0, Math.PI * 2); ctx.fill();
-            ctx.fillStyle = '#0f172a';
-            ctx.fillRect(6, -2.2, 22, 4.4);
-            ctx.fillStyle = '#94a3b8';
-            ctx.fillRect(26, -1.3, 5, 2.6);
-          }
-          ctx.restore();
+          drawGroundVehicle(u);
         } else if (u.type === 'ATTACK_CHOPPER') {
           drawSAMChopper(u);
         } else {
@@ -6406,8 +6797,32 @@
       ctx.restore();
 
       // Minimap Radar
-      mctx.clearRect(0, 0, 140, 140); mctx.fillStyle = 'rgba(0,0,0,0.8)'; mctx.fillRect(0, 0, 140, 140);
+      mctx.clearRect(0, 0, 140, 140);
+      mctx.fillStyle = '#1c2a1c';
+      mctx.fillRect(0, 0, 140, 140);
       const mapScale = 140 / WORLD_SIZE;
+      const mapCell = 800;
+      for (let x = 0; x < WORLD_SIZE; x += mapCell) {
+        for (let y = 0; y < WORLD_SIZE; y += mapCell) {
+          const hsh = terrainHash(x / mapCell, y / mapCell);
+          mctx.fillStyle = hsh < 0.42 ? '#143024' : (hsh > 0.72 ? '#6b5a32' : '#243628');
+          mctx.fillRect(x * mapScale, y * mapScale, mapCell * mapScale + 0.5, mapCell * mapScale + 0.5);
+        }
+      }
+      mctx.strokeStyle = 'rgba(212, 212, 216, 0.45)';
+      mctx.lineWidth = 1;
+      for (let r = 0; r < 3; r++) {
+        const seed = 1400 + r * 2600;
+        const wobble = 0.0011 + r * 0.00035;
+        mctx.beginPath();
+        for (let x = 0; x <= WORLD_SIZE; x += 400) {
+          const y = seed + Math.sin(x * wobble) * 420 + Math.sin(x * 0.00022 + r) * 260;
+          const px = x * mapScale;
+          const py = y * mapScale;
+          if (x === 0) mctx.moveTo(px, py); else mctx.lineTo(px, py);
+        }
+        mctx.stroke();
+      }
       obstacles.forEach(o => {
         const verts = rockWorldVerts(o);
         mctx.fillStyle = '#57534e';
@@ -6490,6 +6905,7 @@
       try { signedInName = localStorage.getItem('apacheCopterAccount') || ''; } catch (err) { signedInName = ''; }
       if (signedInName) applySavedColor(signedInName);
       refreshAccountUi();
+      requestAnimationFrame(pollGamepad);
       const chatInput = document.getElementById('chatInput');
       if (chatInput) {
         chatInput.addEventListener('keydown', (e) => {
