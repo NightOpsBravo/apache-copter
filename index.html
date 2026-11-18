@@ -86,10 +86,11 @@
 
         <div>
           <label class="block text-xs text-emerald-400 mb-1">GAME MODE</label>
-          <div class="grid grid-cols-3 gap-1.5">
+          <div class="grid grid-cols-4 gap-1.5">
             <button id="modeSingleBtn" onclick="selectMode('SINGLE')" class="cursor-pointer pointer-events-auto relative z-[1001] py-2 bg-emerald-600/50 border border-emerald-400 rounded text-[10px] font-bold hover:bg-emerald-500/50">SINGLEPLAYER</button>
             <button id="modeMultiBtn" onclick="selectMode('MULTI')" class="cursor-pointer pointer-events-auto relative z-[1001] py-2 bg-black/60 border border-emerald-500/40 rounded text-[10px] font-bold text-gray-400 hover:bg-emerald-950">P2P MULTI</button>
             <button id="modeSandboxBtn" onclick="selectMode('SANDBOX')" class="cursor-pointer pointer-events-auto relative z-[1001] py-2 bg-black/60 border border-amber-500/40 rounded text-[10px] font-bold text-amber-400 hover:bg-amber-950">SANDBOX</button>
+            <button id="modeZombiesBtn" onclick="selectMode('ZOMBIES')" class="cursor-pointer pointer-events-auto relative z-[1001] py-2 bg-black/60 border border-lime-500/40 rounded text-[10px] font-bold text-lime-300 hover:bg-lime-950">ZOMBIES</button>
           </div>
         </div>
 
@@ -142,12 +143,13 @@
   <!-- DEATH RESET OVERLAY -->
   <div id="deathOverlay" class="modal-overlay fixed inset-0 z-[1100] items-center justify-center bg-black/85 backdrop-blur-md">
     <div class="hud-glass p-8 rounded-2xl max-w-sm w-full text-center border-2 border-red-500/60 shadow-2xl relative z-[1101]">
-      <h2 class="text-3xl font-black text-red-500 tracking-widest mb-1">CHOPPER DOWN</h2>
-      <p class="text-xs text-red-300/70 mb-4">YOUR HELICOPTER WAS DESTROYED</p>
+      <h2 id="deathTitle" class="text-3xl font-black text-red-500 tracking-widest mb-1">CHOPPER DOWN</h2>
+      <p id="deathSubtitle" class="text-xs text-red-300/70 mb-4">YOUR HELICOPTER WAS DESTROYED</p>
 
       <div class="bg-black/50 p-4 rounded-xl border border-red-500/30 mb-6 text-left space-y-2 text-xs">
         <div class="flex justify-between"><span class="text-gray-400">FINAL SCORE:</span><span id="finalScore" class="font-bold text-amber-400">0</span></div>
         <div class="flex justify-between"><span class="text-gray-400">LEVEL REACHED:</span><span id="finalLevel" class="font-bold text-emerald-400">0</span></div>
+        <div id="finalBestRow" class="hidden justify-between"><span class="text-gray-400">BEST SCORE:</span><span id="finalBest" class="font-bold text-lime-300">0</span></div>
         <p class="text-[10px] text-red-400/80 italic mt-2 text-center">* Level kept: 50% (Multiplayer &amp; Sandbox) / 0% (Singleplayer)</p>
       </div>
 
@@ -654,7 +656,7 @@
           </div>
         </div>
 
-        <div class="flex gap-2 text-xs font-bold">
+          <div id="hudLoadout" class="flex gap-2 text-xs font-bold">
           <div class="hud-glass flex-1 p-2 rounded-lg border border-amber-500/40 text-amber-400 text-center">
             <span id="hudRocketsTitle">HYDRA ROCKETS</span>: <span id="hudRockets" class="text-white">2</span>
           </div>
@@ -716,21 +718,15 @@
           <div class="hud-glass px-4 py-2 rounded-lg text-emerald-400 font-bold text-sm border border-emerald-500/40">
             SCORE: <span id="hudScore" class="text-white font-black">0</span>
           </div>
+          <div id="hudZombie" class="hidden hud-glass px-4 py-2 rounded-lg text-lime-300 font-bold text-[11px] border border-lime-500/40 text-right">
+            $<span id="hudZombieCash">0</span> · ◆<span id="hudZombieGems">0</span><br>
+            NIGHT <span id="hudZombieWave">1</span> · BASE <span id="hudZombieBase">1000</span><br>
+            <span class="text-lime-200/70">BEST NIGHT <span id="hudZombieBest">0</span></span>
+            <span id="hudInfection" class="hidden text-lime-200"> · INFECTED</span>
+          </div>
         </div>
         <div class="hud-glass p-1 rounded-xl border border-emerald-500/40 relative">
           <canvas id="minimap" width="140" height="140" class="w-[140px] h-[140px] rounded-lg bg-black/70 cursor-pointer"></canvas>
-        </div>
-        
-        <!-- LEADERBOARD -->
-        <div class="hud-glass p-2 rounded-lg border border-emerald-500/40 w-full mt-2 pointer-events-auto">
-          <div class="text-[10px] font-black text-emerald-400 border-b border-emerald-500/30 pb-1 mb-1 text-center tracking-widest">LEADERBOARD</div>
-          <div id="leaderboardList" class="space-y-1 text-[10px] font-bold max-h-[80px] overflow-y-auto">
-            <!-- Dynamic entries -->
-          </div>
-        </div>
-        <div class="hud-glass p-2 rounded-lg border border-rose-500/40 w-56 pointer-events-auto">
-          <div class="text-[10px] font-black text-rose-300 border-b border-rose-500/30 pb-1 mb-1 text-center tracking-widest">KILLS</div>
-          <div id="killFeedList" class="space-y-1 text-[10px] font-bold max-h-[132px] overflow-y-auto"></div>
         </div>
         <div id="chatPanel" class="hidden hud-glass p-2 rounded-lg border border-sky-500/40 w-56 pointer-events-auto">
           <div class="text-[10px] font-black text-sky-300 border-b border-sky-500/30 pb-1 mb-1 text-center tracking-widest">CHAT</div>
@@ -741,6 +737,7 @@
     </div>
 
     <!-- BOTTOM LEFT: STAT UPGRADE TREE -->
+    <div id="towerShop" class="hidden pointer-events-auto fixed bottom-3 left-1/2 -translate-x-1/2 z-[45] hud-glass px-2 py-2 rounded-xl border border-amber-400/50 flex gap-1 max-w-[96vw] overflow-x-auto"></div>
     <div id="statPanel" class="hidden pointer-events-auto w-80 hud-glass p-3 rounded-xl border border-emerald-500/40 space-y-1.5 shadow-2xl">
       <div class="flex justify-between items-center text-xs font-black text-emerald-400 border-b border-emerald-500/30 pb-1">
         <span>STAT UPGRADES</span>
@@ -848,8 +845,13 @@
     let lastActivity = performance.now();
     const AFK_LIMIT = 5 * 60 * 1000;
     let selectedMode = 'SINGLE';
-    function isOnlineMatch() { return selectedMode === 'MULTI' || selectedMode === 'SANDBOX'; }
-    function roomPeerId(code) { return (selectedMode === 'SANDBOX' ? 'APACHE-SB-' : 'APACHE-') + code; }
+    function isOnlineMatch() { return selectedMode === 'MULTI' || selectedMode === 'SANDBOX' || selectedMode === 'ZOMBIES'; }
+    function isZombies() { return selectedMode === 'ZOMBIES'; }
+    function roomPeerId(code) {
+      const prefix = selectedMode === 'SANDBOX' ? 'APACHE-SB-' : (selectedMode === 'ZOMBIES' ? 'APACHE-ZB-' : 'APACHE-');
+      return prefix + code;
+    }
+    let zombie = null;
     let isGodMode = true;
     let lastTime = performance.now();
     let netTickTimer = 0; // Throttle timer for network sync
@@ -1386,6 +1388,11 @@
 
     function triggerPress(code) {
       if (!code || gameState !== 'PLAYING') return;
+      if (isZombies()) {
+        if (code === binds.map) toggleTacticalMap();
+        if (code === binds.chat) openChat();
+        return;
+      }
       const modalOpen = !!document.querySelector('.modal-overlay.active');
       if (modalOpen) {
         if (isTacticalMapOpen && code === binds.map) toggleTacticalMap();
@@ -1518,6 +1525,12 @@
     const GAME_VERSION = 2;
     const LIVE_URL = 'https://nightopsbravo.github.io/apache-copter/';
     let signedInName = '';
+    let accountZombieBest = { wave: 0, score: 0 };
+    let towerPick = 'GUN';
+    let wallAnchor = null;
+    const WALL_REACH = 130;
+    const WALL_COST = 10;
+    const WALL_MAX = 12;
 
     function accountKey(name) {
       return String(name || '').trim().toLowerCase();
@@ -1582,7 +1595,20 @@
         else localStorage.removeItem('apacheCopterAccount');
       } catch (err) {}
       if (signedInName) applySavedColor(signedInName);
+      try {
+        const cached = JSON.parse(localStorage.getItem('apacheCopterZombieBest:' + accountKey(signedInName)) || 'null');
+        if (cached && Number(cached.wave) > 0) accountZombieBest = { wave: Number(cached.wave) || 0, score: Number(cached.score) || 0 };
+      } catch (err) { accountZombieBest = { wave: 0, score: 0 }; }
       refreshAccountUi();
+    }
+
+    function takeZombieBest(board) {
+      const row = board && board.zombieBests && board.zombieBests[accountKey(signedInName)];
+      if (!row) return;
+      if (row.wave > accountZombieBest.wave || (row.wave === accountZombieBest.wave && row.score > accountZombieBest.score)) {
+        accountZombieBest = { wave: row.wave, score: row.score };
+        try { localStorage.setItem('apacheCopterZombieBest:' + accountKey(signedInName), JSON.stringify(accountZombieBest)); } catch (err) {}
+      }
     }
 
     async function hashPassword(password, salt) {
@@ -1602,6 +1628,7 @@
       if (!res.ok) throw new Error(String(res.status));
       const text = await res.text();
       const accounts = {};
+      const zombieBests = {};
       const reports = [];
       const hidden = {};
       const releaseParts = [];
@@ -1626,6 +1653,12 @@
             url: body.url ? String(body.url) : '',
             data: body.data ? String(body.data) : ''
           });
+        } else if (body.op === 'zbest' && body.name) {
+          const key = accountKey(body.name);
+          const wave = Number(body.wave) || 0;
+          const score = Number(body.score) || 0;
+          const prev = zombieBests[key];
+          if (key && (!prev || wave > prev.wave || (wave === prev.wave && score > prev.score))) zombieBests[key] = { wave: wave, score: score };
         } else if (body.text && body.id) {
           reports.push({
             id: String(body.id),
@@ -1636,7 +1669,7 @@
           });
         }
       });
-      return { accounts, reports, hidden, releaseParts };
+      return { accounts, reports, hidden, releaseParts, zombieBests };
     }
 
     function newestRelease(parts) {
@@ -1743,8 +1776,9 @@
           const color = validColor(document.getElementById('playerColorInput').value) || '#166534';
           await postFeedback({ op: 'account', name: name, salt: salt, hash: hash, color: color });
           let saved = null;
+          let confirmed = board;
           for (let attempt = 0; attempt < 4; attempt++) {
-            const confirmed = await readBoard();
+            confirmed = await readBoard();
             saved = confirmed.accounts[accountKey(name)];
             if (saved) break;
             await new Promise(resolve => setTimeout(resolve, 400));
@@ -1756,6 +1790,7 @@
           document.getElementById('accountPassword').value = '';
           rememberColor(saved.name, saved.color || color);
           setSignedIn(saved.name);
+          takeZombieBest(confirmed);
         } else {
           if (!existing) {
             if (status) status.textContent = 'NO ACCOUNT WITH THAT NAME';
@@ -1769,6 +1804,7 @@
           document.getElementById('accountPassword').value = '';
           if (existing.color) rememberColor(existing.name, existing.color);
           setSignedIn(existing.name);
+          takeZombieBest(board);
         }
       } catch (err) {
         if (status) status.textContent = 'COULD NOT REACH THE ACCOUNT LIST';
@@ -1924,6 +1960,8 @@
       if (hud) hud.classList.add('hidden');
       const statPanel = document.getElementById('statPanel');
       if (statPanel) statPanel.classList.add('hidden');
+      const towerShop = document.getElementById('towerShop');
+      if (towerShop) towerShop.classList.add('hidden');
       const sandboxCtrl = document.getElementById('sandboxControls');
       if (sandboxCtrl) sandboxCtrl.classList.add('hidden');
       const roomBtn = document.getElementById('multiplayerRoomCodeBtn');
@@ -2060,6 +2098,14 @@
       }
       const onUi = e.target.closest && e.target.closest('button, input, textarea, a, .modal-overlay');
       if (onUi) return;
+      if (isZombies() && gameState === 'PLAYING' && e.button === 2) {
+        clearPlacement();
+        return;
+      }
+      if (isZombies() && gameState === 'PLAYING' && e.button === 0 && towerPick) {
+        requestPlace(mouse.worldX, mouse.worldY);
+        return;
+      }
       setMouseHeld(e.button, true);
       triggerPress(mouseButtonCode(e.button));
     });
@@ -2304,7 +2350,8 @@
         if (isTextEntry(field)) {
           setControlScheme('pad');
           openPadKeyboard(field);
-        } else if (hit) hit.click();
+        }         else if (hit) hit.click();
+        else if (playing && isZombies() && towerPick) requestPlace(mouse.worldX, mouse.worldY);
         else if (playing) {
           padState.ownsGun = true;
           mouse.downLeft = true;
@@ -2656,9 +2703,11 @@
       document.getElementById('modeSingleBtn').className = mode === 'SINGLE' ? 'cursor-pointer pointer-events-auto relative z-[1001] py-2 bg-emerald-600/50 border border-emerald-400 rounded text-[10px] font-bold hover:bg-emerald-500/50' : 'cursor-pointer pointer-events-auto relative z-[1001] py-2 bg-black/60 border border-emerald-500/40 rounded text-[10px] font-bold text-gray-400 hover:bg-emerald-950';
       document.getElementById('modeMultiBtn').className = mode === 'MULTI' ? 'cursor-pointer pointer-events-auto relative z-[1001] py-2 bg-emerald-600/50 border border-emerald-400 rounded text-[10px] font-bold hover:bg-emerald-500/50' : 'cursor-pointer pointer-events-auto relative z-[1001] py-2 bg-black/60 border border-emerald-500/40 rounded text-[10px] font-bold text-gray-400 hover:bg-emerald-950';
       document.getElementById('modeSandboxBtn').className = mode === 'SANDBOX' ? 'cursor-pointer pointer-events-auto relative z-[1001] py-2 bg-amber-600/50 border border-amber-400 rounded text-[10px] font-bold text-amber-200 hover:bg-amber-500/50' : 'cursor-pointer pointer-events-auto relative z-[1001] py-2 bg-black/60 border border-amber-500/40 rounded text-[10px] font-bold text-amber-400 hover:bg-amber-950';
+      const zombiesBtn = document.getElementById('modeZombiesBtn');
+      if (zombiesBtn) zombiesBtn.className = mode === 'ZOMBIES' ? 'cursor-pointer pointer-events-auto relative z-[1001] py-2 bg-lime-600/70 border border-lime-300 rounded text-[10px] font-bold text-black hover:bg-lime-500/70' : 'cursor-pointer pointer-events-auto relative z-[1001] py-2 bg-black/60 border border-lime-500/40 rounded text-[10px] font-bold text-lime-300 hover:bg-lime-950';
       document.getElementById('roomCodeContainer').classList.toggle('hidden', mode === 'SINGLE');
       const roomLabel = document.getElementById('roomCodeLabel');
-      if (roomLabel) roomLabel.textContent = mode === 'SANDBOX' ? 'SANDBOX ROOM CODE (Leave blank to Host)' : 'ROOM CODE (Leave blank to Host)';
+      if (roomLabel) roomLabel.textContent = mode === 'SANDBOX' ? 'SANDBOX ROOM CODE (Leave blank to Host)' : (mode === 'ZOMBIES' ? 'ZOMBIES ROOM CODE (Leave blank to Host)' : 'ROOM CODE (Leave blank to Host)');
     };
 
     window.sandboxAddLevels = function(count) {
@@ -2778,8 +2827,8 @@
 
       const statPanel = document.getElementById('statPanel');
       if (statPanel) {
-        if (localPlayer.tokens > 0) statPanel.classList.remove('hidden');
-        else statPanel.classList.add('hidden');
+        if (isZombies() || localPlayer.tokens <= 0) statPanel.classList.add('hidden');
+        else statPanel.classList.remove('hidden');
       }
     }
 
@@ -3014,6 +3063,7 @@
           crates: crates,
           obstacles: obstacles,
           pveUnits: pveUnits,
+          zombie: zombiePublic(),
           hostPlayer: {
             id: localPlayer.id, name: localPlayer.name, color: localPlayer.color,
             playerClass: localPlayer.playerClass, heliModel: localPlayer.heliModel, x: localPlayer.x, y: localPlayer.y,
@@ -3070,6 +3120,7 @@
           crates = msg.crates || [];
           obstacles = msg.obstacles || [];
           pveUnits = msg.pveUnits || [];
+          if (msg.zombie) applyZombieState(msg.zombie);
           if (msg.hostPlayer) remotePlayers[msg.hostPlayer.id] = msg.hostPlayer;
           clearJoinWatch();
           if (gameState !== 'PLAYING' && gameState !== 'DEAD') {
@@ -3117,7 +3168,15 @@
             }
             return u;
           });
+          if (msg.zombie) applyZombieState(msg.zombie);
         }
+        else if (msg.type === 'ZOMBIE_LOST' && !isHost) {
+          finishZombieRun(msg.reason || 'The run is over.', true);
+        }
+        else if (msg.type === 'TOWER_SHOP' && isHost) hostUnlockTower(msg.id);
+        else if (msg.type === 'PLACE_TOWER' && isHost) placeTower(msg.x, msg.y, msg.kind);
+        else if (msg.type === 'PLACE_WALL' && isHost) placeWall(msg.x1, msg.y1, msg.x2, msg.y2);
+        else if (msg.type === 'TOWER_BLAST' && !isHost) createExplosion(msg.x, msg.y, msg.radius || 30, 0, 'tower');
         else if (msg.type === 'SPAWN_CRATES' && !isHost) {
           if (msg.crates) crates.push(...msg.crates);
         }
@@ -3184,9 +3243,13 @@
           if (!isGodMode && !(localPlayer.spawnGuard > 0)) {
             const pWasAlive = localPlayer.hp > 0;
             applyHullDamage(msg.damage); updateHUD();
+            if (pWasAlive && msg.weapon === 'ZOMBIE') infectPilot(90);
             if (pWasAlive && localPlayer.hp <= 0 && gameState === 'PLAYING') {
-                createExplosion(localPlayer.x, localPlayer.y, 60); triggerDeath();
-                reportPlayerKill(msg.shooterId, msg.weapon || 'GUN');
+                if (isZombies()) downPilot();
+                else {
+                  createExplosion(localPlayer.x, localPlayer.y, 60); triggerDeath();
+                  reportPlayerKill(msg.shooterId, msg.weapon || 'GUN');
+                }
             }
           }
         }
@@ -3395,6 +3458,12 @@
       }
 
       initWorld();
+      if (isZombies()) {
+        placeLocalAtBase();
+        const shop = document.getElementById('towerShop');
+        if (shop) shop.classList.remove('hidden');
+        refreshTowerShop();
+      }
       const chatPanel = document.getElementById('chatPanel');
       if (chatPanel) chatPanel.classList.toggle('hidden', !isOnlineMatch());
       gameState = 'PLAYING';
@@ -3492,9 +3561,17 @@
 
     function awardCrate(c, ownerId) {
       if (ownerId !== localPlayer.id) return;
+      if (c.kind === 'SCAVENGE') {
+        localPlayer.hp = Math.min(getStatVal('maxHp'), localPlayer.hp + 45);
+        localPlayer.rockets = Math.min(getStatVal('maxRockets'), localPlayer.rockets + 1);
+        localPlayer.flares = Math.min(getStatVal('maxFlares'), localPlayer.flares + 1);
+        localPlayer.infection = Math.max(0, (localPlayer.infection || 0) - 240);
+        floatingTexts.push({ x: c.x, y: c.y, text: 'SUPPLIES', color: '#fde68a', life: 50 });
+        updateHUD();
+      }
       const xp = c.xp || 10;
       addXP(xp);
-      floatingTexts.push({ x: c.x, y: c.y, text: '+' + xp, color: c.kind === 'HEAVY' ? '#fbbf24' : '#22c55e', life: 50 });
+      if (c.kind !== 'SCAVENGE') floatingTexts.push({ x: c.x, y: c.y, text: '+' + xp, color: c.kind === 'HEAVY' ? '#fbbf24' : '#22c55e', life: 50 });
     }
 
     function rockWorldVerts(o) {
@@ -3671,9 +3748,1473 @@
       }
     }
 
+    function zombieLane() {
+      const w = 860;
+      const h = 2100;
+      const x = (WORLD_SIZE - w) / 2;
+      const y = (WORLD_SIZE - h) / 2;
+      return { x: x, y: y, w: w, h: h, right: x + w, bottom: y + h };
+    }
+
+    function playBounds() {
+      if (!isZombies()) {
+        return { left: BORDER_MARGIN, top: BORDER_MARGIN, right: WORLD_SIZE - BORDER_MARGIN, bottom: WORLD_SIZE - BORDER_MARGIN };
+      }
+      const lane = zombieLane();
+      return { left: lane.x + 48, top: lane.y + 48, right: lane.right - 48, bottom: lane.bottom - 28 };
+    }
+
+    function baseFrontY() {
+      return zombieLane().bottom - 150;
+    }
+
+    const TOWER_DEFS = [
+      { id: 'GUN', name: 'GUN NEST', gems: 0, cost: 75, range: 210, rate: 18, damage: 9, color: '#94a3b8' },
+      { id: 'MG', name: 'MG PIT', gems: 14, cost: 180, range: 190, rate: 6, damage: 5, color: '#38bdf8' },
+      { id: 'ROCKET', name: 'ROCKET', gems: 32, cost: 340, range: 260, rate: 160, damage: 30, splash: 40, color: '#f97316' },
+      { id: 'FLAME', name: 'FLAME', gems: 55, cost: 460, range: 125, rate: 4, damage: 4, color: '#ef4444' },
+      { id: 'SNIPER', name: 'SNIPER', gems: 85, cost: 680, range: 440, rate: 48, damage: 58, color: '#e2e8f0' },
+      { id: 'TESLA', name: 'TESLA', gems: 125, cost: 920, range: 175, rate: 30, damage: 20, chain: 2, color: '#22d3ee' },
+      { id: 'MORTAR', name: 'MORTAR', gems: 175, cost: 1200, range: 380, rate: 110, damage: 44, splash: 62, color: '#a3e635' },
+      { id: 'RAIL', name: 'RAIL', gems: 250, cost: 1600, range: 500, rate: 86, damage: 140, color: '#c4b5fd' }
+    ];
+
+    function towerDef(id) {
+      return TOWER_DEFS.find(d => d.id === id);
+    }
+
+    function zombieBounty(type) {
+      return ({
+        ZOMBIE_WALKER: { cash: 2, gems: 0.12 },
+        ZOMBIE_CRAWLER: { cash: 2, gems: 0.08 },
+        ZOMBIE_RUNNER: { cash: 3, gems: 0.14 },
+        ZOMBIE_SPITTER: { cash: 4, gems: 0.28 },
+        ZOMBIE_BRUTE: { cash: 8, gems: 0.7 },
+        ZOMBIE_BLOATER: { cash: 5, gems: 0.4 },
+        ZOMBIE_SCREAMER: { cash: 4, gems: 0.32 },
+        ZOMBIE_LEAPER: { cash: 5, gems: 0.36 },
+        ZOMBIE_JUGGERNAUT: { cash: 14, gems: 1.4 }
+      })[type] || { cash: 6, gems: 0 };
+    }
+
+    function grantZombiePay(cash, gems, x, y) {
+      if (!isHost || !zombie) return;
+      zombie.cash = (zombie.cash || 0) + cash;
+      zombie.gems = (zombie.gems || 0) + gems;
+      localPlayer.score = (localPlayer.score || 0) + Math.round(cash);
+      const gemText = gems >= 1 ? ' ◆' + Math.floor(gems) : '';
+      floatingTexts.push({ x: x, y: y - 14, text: '+$' + Math.round(cash) + gemText, color: '#fde68a', life: 40 });
+      refreshZombieHud();
+    }
+
+    function payZombieKill(u) {
+      if (!isHost || !zombie || !u || u.bountyPaid || !u.type || !u.type.startsWith('ZOMBIE')) return;
+      u.bountyPaid = true;
+      const pay = zombieBounty(u.type);
+      grantZombiePay(pay.cash, pay.gems, u.x, u.y);
+    }
+
+    function hurtZombie(u, amount) {
+      if (!u || u.hp <= 0 || amount <= 0) return;
+      u.hp -= amount;
+      if (u.hp <= 0) payZombieKill(u);
+    }
+
+    function hostUnlockTower(id) {
+      if (!isHost || !zombie || zombie.over) return false;
+      const def = towerDef(id);
+      if (!def || (zombie.owned && zombie.owned[id])) return false;
+      if ((zombie.gems || 0) < def.gems) {
+        floatingTexts.push({ x: localPlayer.x, y: localPlayer.y - 22, text: 'NEED ' + def.gems + ' GEMS', color: '#fca5a5', life: 40 });
+        return false;
+      }
+      zombie.gems -= def.gems;
+      zombie.owned[id] = true;
+      refreshZombieHud();
+      return true;
+    }
+
+    function clearPlacement() {
+      towerPick = null;
+      wallAnchor = null;
+      refreshTowerShop();
+    }
+
+    function requestTower(id) {
+      if (!towerDef(id) || !(zombie && zombie.owned && zombie.owned[id])) return;
+      if (towerPick === id) { clearPlacement(); return; }
+      towerPick = id;
+      wallAnchor = null;
+      refreshTowerShop();
+    }
+
+    function buyTowerFromShop(id) {
+      if (!towerDef(id)) return;
+      if (zombie && zombie.owned && zombie.owned[id]) {
+        requestTower(id);
+        return;
+      }
+      if (!isHost) broadcast({ type: 'TOWER_SHOP', id: id });
+      else if (hostUnlockTower(id)) {
+        towerPick = id;
+        wallAnchor = null;
+      }
+      refreshTowerShop();
+    }
+
+    function stallAt(x, y) {
+      const lane = zombieLane();
+      if (y < baseFrontY() + 12 || y > lane.bottom - 6 || x < lane.x || x > lane.right) return null;
+      const slotW = lane.w / TOWER_DEFS.length;
+      const i = Math.floor((x - lane.x) / slotW);
+      return TOWER_DEFS[i] ? TOWER_DEFS[i].id : null;
+    }
+
+    function distToSeg(px, py, w) {
+      const dx = w.x2 - w.x1;
+      const dy = w.y2 - w.y1;
+      const len2 = dx * dx + dy * dy || 1;
+      let t = ((px - w.x1) * dx + (py - w.y1) * dy) / len2;
+      t = Math.max(0, Math.min(1, t));
+      const x = w.x1 + dx * t;
+      const y = w.y1 + dy * t;
+      return { d: Math.hypot(px - x, py - y), x: x, y: y };
+    }
+
+    function standingWalls() {
+      return (zombie && zombie.walls || []).filter(w => w.hp > 0).length;
+    }
+
+    function selectWall() {
+      if (towerPick === 'WALL') { clearPlacement(); return; }
+      towerPick = 'WALL';
+      wallAnchor = null;
+      refreshTowerShop();
+    }
+
+    function wallPointOk(x, y) {
+      const lane = zombieLane();
+      return x >= lane.x + 28 && x <= lane.right - 28 && y >= lane.y + 40 && y <= baseFrontY() - 24;
+    }
+
+    function placeWallPoint(x, y) {
+      if (!wallPointOk(x, y)) return;
+      if (!wallAnchor) {
+        wallAnchor = { x: x, y: y };
+        floatingTexts.push({ x: x, y: y - 16, text: 'WALL START', color: '#fdba74', life: 28 });
+        return;
+      }
+      const dist = Math.hypot(x - wallAnchor.x, y - wallAnchor.y);
+      if (dist < 28) return;
+      if (dist > WALL_REACH) {
+        floatingTexts.push({ x: x, y: y - 16, text: 'TOO FAR', color: '#fca5a5', life: 32 });
+        return;
+      }
+      if (standingWalls() >= WALL_MAX) {
+        floatingTexts.push({ x: x, y: y - 16, text: 'WALL LIMIT ' + WALL_MAX, color: '#fca5a5', life: 36 });
+        return;
+      }
+      const seg = { x1: wallAnchor.x, y1: wallAnchor.y, x2: x, y2: y };
+      wallAnchor = null;
+      if (!isHost) broadcast({ type: 'PLACE_WALL', x1: seg.x1, y1: seg.y1, x2: seg.x2, y2: seg.y2 });
+      else placeWall(seg.x1, seg.y1, seg.x2, seg.y2);
+    }
+
+    function placeWall(x1, y1, x2, y2) {
+      if (!isHost || !zombie || zombie.over) return;
+      if (!wallPointOk(x1, y1) || !wallPointOk(x2, y2)) return;
+      const dist = Math.hypot(x2 - x1, y2 - y1);
+      if (dist < 28 || dist > WALL_REACH + 8) return;
+      zombie.walls = zombie.walls || [];
+      if (standingWalls() >= WALL_MAX) {
+        floatingTexts.push({ x: (x1 + x2) / 2, y: (y1 + y2) / 2 - 16, text: 'WALL LIMIT ' + WALL_MAX, color: '#fca5a5', life: 36 });
+        return;
+      }
+      const midX = (x1 + x2) / 2;
+      const midY = (y1 + y2) / 2;
+      if (zombie.walls.some(w => w.hp > 0 && distToSeg(midX, midY, w).d < 14)) return;
+      if ((zombie.towers || []).some(t => t.hp > 0 && distToSeg(t.x, t.y, { x1: x1, y1: y1, x2: x2, y2: y2 }).d < 22)) return;
+      if ((zombie.cash || 0) < WALL_COST) {
+        floatingTexts.push({ x: midX, y: midY - 16, text: 'NEED $' + WALL_COST, color: '#fca5a5', life: 36 });
+        return;
+      }
+      zombie.cash -= WALL_COST;
+      zombie.walls.push({ id: 'wl_' + Date.now() + '_' + Math.floor(Math.random() * 999), x1: x1, y1: y1, x2: x2, y2: y2, hp: 90, maxHp: 90 });
+      refreshZombieHud();
+    }
+
+    function nearestTower(x, y, range) {
+      let best = null;
+      let bestD = range;
+      (zombie.towers || []).forEach(t => {
+        if (!t || !(t.hp > 0)) return;
+        const d = Math.hypot(t.x - x, t.y - y);
+        if (d < bestD) { bestD = d; best = t; }
+      });
+      return best ? { tower: best, dist: bestD } : null;
+    }
+
+    function hurtTower(t, amount) {
+      if (!t || !(t.hp > 0)) return;
+      t.hp -= amount;
+    }
+
+    function hurtWall(w, amount) {
+      if (!w || !(w.hp > 0)) return;
+      w.hp -= amount;
+    }
+
+    function reapDefenses() {
+      if (!zombie) return;
+      zombie.towers = (zombie.towers || []).filter(t => {
+        if (t.hp > 0) return true;
+        createExplosion(t.x, t.y, 34, 0, null);
+        floatingTexts.push({ x: t.x, y: t.y - 18, text: 'TOWER DOWN', color: '#fca5a5', life: 42 });
+        return false;
+      });
+      zombie.walls = (zombie.walls || []).filter(w => {
+        if (w.hp > 0) return true;
+        floatingTexts.push({ x: (w.x1 + w.x2) / 2, y: (w.y1 + w.y2) / 2 - 12, text: 'WALL DOWN', color: '#fdba74', life: 36 });
+        return false;
+      });
+    }
+
+    function requestPlace(x, y) {
+      if (!isZombies() || !zombie || zombie.over || gameState !== 'PLAYING') return;
+      const stall = stallAt(x, y);
+      if (stall) { buyTowerFromShop(stall); return; }
+      if (towerPick === 'WALL') { placeWallPoint(x, y); return; }
+      if (!isHost) broadcast({ type: 'PLACE_TOWER', x: x, y: y, kind: towerPick });
+      else placeTower(x, y, towerPick);
+    }
+
+    function placeTower(x, y, kind) {
+      if (!isHost || !zombie || zombie.over) return;
+      const def = towerDef(kind);
+      const lane = zombieLane();
+      if (!def || !zombie.owned || !zombie.owned[kind]) {
+        if (def) floatingTexts.push({ x: x, y: y - 16, text: 'BUY ' + def.name + ' FIRST', color: '#fca5a5', life: 36 });
+        return;
+      }
+      if (x < lane.x + 36 || x > lane.right - 36 || y < lane.y + 50 || y > baseFrontY() - 28) {
+        floatingTexts.push({ x: x, y: y - 16, text: 'CAN\'T BUILD HERE', color: '#fca5a5', life: 28 });
+        return;
+      }
+      zombie.towers = zombie.towers || [];
+      if (zombie.towers.some(t => Math.hypot(t.x - x, t.y - y) < 48)) {
+        floatingTexts.push({ x: x, y: y - 16, text: 'TOO CLOSE', color: '#fca5a5', life: 28 });
+        return;
+      }
+      if ((zombie.wrecks || []).some(w => Math.hypot(w.x - x, w.y - y) < 48)) {
+        floatingTexts.push({ x: x, y: y - 16, text: 'BLOCKED', color: '#fca5a5', life: 28 });
+        return;
+      }
+      if ((zombie.walls || []).some(w => w.hp > 0 && distToSeg(x, y, w).d < 22)) {
+        floatingTexts.push({ x: x, y: y - 16, text: 'BLOCKED', color: '#fca5a5', life: 28 });
+        return;
+      }
+      if ((zombie.cash || 0) < def.cost) {
+        floatingTexts.push({ x: x, y: y - 16, text: 'NEED $' + def.cost, color: '#fca5a5', life: 36 });
+        return;
+      }
+      zombie.cash -= def.cost;
+      const hp = 110 + Math.round(def.cost * 0.08);
+      zombie.towers.push({ id: 'tw_' + Date.now() + '_' + Math.floor(Math.random() * 999), kind: kind, x: x, y: y, cool: 8, aim: -Math.PI / 2, hp: hp, maxHp: hp });
+      refreshZombieHud();
+    }
+
+    function nearestZombie(x, y, range) {
+      let best = null;
+      let bestD = range;
+      pveUnits.forEach(u => {
+        if (!u || u.hp <= 0 || !u.type || !u.type.startsWith('ZOMBIE')) return;
+        const d = Math.hypot(u.x - x, u.y - y);
+        if (d < bestD) { bestD = d; best = u; }
+      });
+      return best;
+    }
+
+    function launchTowerRocket(tower, target, def) {
+      const angle = Math.atan2(target.y - tower.y, target.x - tower.x);
+      const r = {
+        ownerId: 'tower',
+        x: tower.x + Math.cos(angle) * 16,
+        y: tower.y + Math.sin(angle) * 16,
+        targetX: target.x,
+        targetY: target.y,
+        angle: angle,
+        speed: 1.6,
+        maxSpeed: def.id === 'MORTAR' ? 6.5 : 9,
+        damage: def.damage,
+        radius: def.splash,
+        id: 'twr_' + Math.random().toString(36).slice(2, 9)
+      };
+      rockets.push(r);
+      spawnLaunch(r.x, r.y, angle, false);
+      audio.play('rocket', r.x, r.y);
+      if (isOnlineMatch()) broadcast({ type: 'FIRE_ROCKET', id: 'tower', rocket: r });
+    }
+
+    function towerBullet(x, y, angle, speed, damage, life) {
+      const b = { ownerId: 'tower', x: x, y: y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, damage: damage, life: life || 70 };
+      bullets.push(b);
+      if (isOnlineMatch()) broadcast({ type: 'FIRE_GUN', id: 'tower', bullet: b });
+    }
+
+    function updateTowers(dt) {
+      if (!isHost || !zombie || zombie.over) return;
+      reapDefenses();
+      (zombie.towers || []).forEach(t => {
+        if (!(t.hp > 0)) return;
+        const def = towerDef(t.kind);
+        if (!def) return;
+        t.cool = Math.max(0, (t.cool || 0) - dt);
+        const target = nearestZombie(t.x, t.y, def.range);
+        if (!target) return;
+        t.aim = Math.atan2(target.y - t.y, target.x - t.x);
+        if (t.cool > 0) return;
+        t.cool = def.rate;
+        if (def.splash) launchTowerRocket(t, target, def);
+        else if (t.kind === 'FLAME' || t.kind === 'TESLA') {
+          hurtZombie(target, def.damage);
+          if (t.kind === 'TESLA' && isOnlineMatch()) broadcast({ type: 'TOWER_BLAST', x: target.x, y: target.y, radius: 36 });
+          if (t.kind === 'TESLA') {
+            let prev = target;
+            for (let n = 0; n < (def.chain || 0); n++) {
+              let next = null;
+              let nd = 90;
+              pveUnits.forEach(u => {
+                if (!u || u.hp <= 0 || u === prev || !u.type || !u.type.startsWith('ZOMBIE')) return;
+                const d = Math.hypot(u.x - prev.x, u.y - prev.y);
+                if (d < nd) { nd = d; next = u; }
+              });
+              if (!next) break;
+              hurtZombie(next, def.damage * 0.6);
+              prev = next;
+            }
+          }
+        } else {
+          const speed = (t.kind === 'SNIPER' || t.kind === 'RAIL') ? 18 : (t.kind === 'MG' ? 11 : 8);
+          towerBullet(t.x, t.y, t.aim, speed, def.damage, speed > 12 ? 36 : 55);
+        }
+      });
+    }
+
+    function refreshTowerShop() {
+      const row = document.getElementById('towerShop');
+      if (!row) return;
+      const show = isZombies() && zombie && (gameState === 'PLAYING' || gameState === 'DEAD');
+      row.classList.toggle('hidden', !show || gameState !== 'PLAYING');
+      if (!show) return;
+      const wallCount = standingWalls();
+      const sig = TOWER_DEFS.map(d => (zombie.owned && zombie.owned[d.id] ? '1' : '0')).join('') + '|' + towerPick + (wallAnchor ? 'A' : '') + '|' + wallCount;
+      if (row.dataset.sig === sig && row.childElementCount) return;
+      row.dataset.sig = sig;
+      const heli = '<button type="button" data-tower="HELI" class="shrink-0 px-2 py-1 rounded border text-[9px] leading-tight font-bold ' + (!towerPick ? 'border-sky-300 bg-sky-500/20 text-sky-100' : 'border-stone-600 text-stone-200') + '" style="min-width:78px">HELI GUN<br>DESELECT</button>';
+      const ownedTowers = TOWER_DEFS.filter(def => zombie.owned && zombie.owned[def.id]);
+      row.innerHTML = heli + ownedTowers.map(def => {
+        const picked = towerPick === def.id;
+        return '<button type="button" data-tower="' + def.id + '" class="shrink-0 px-2 py-1 rounded border text-[9px] leading-tight font-bold ' + (picked ? 'border-amber-300 bg-amber-500/20 text-amber-100' : 'border-stone-600 text-stone-200') + '" style="min-width:78px">' + def.name + '<br>PLACE $' + def.cost + '</button>';
+      }).join('') + '<button type="button" data-tower="WALL" class="shrink-0 px-2 py-1 rounded border text-[9px] leading-tight font-bold ' + (towerPick === 'WALL' ? 'border-amber-300 bg-amber-500/20 text-amber-100' : 'border-orange-900 text-orange-200') + '" style="min-width:78px">WALL ' + wallCount + '/' + WALL_MAX + '<br>$' + WALL_COST + ' / STRETCH</button>';
+      row.querySelectorAll('button').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const id = btn.getAttribute('data-tower');
+          if (id === 'HELI') clearPlacement();
+          else if (id === 'WALL') selectWall();
+          else requestTower(id);
+        });
+      });
+    }
+
+    function drawTowerBody(t, def) {
+      const aim = t.aim || -Math.PI / 2;
+      ctx.fillStyle = 'rgba(0,0,0,0.38)';
+      ctx.beginPath();
+      ctx.ellipse(2, 16, 20, 7, 0, 0, Math.PI * 2);
+      ctx.fill();
+      if (t.kind === 'GUN') {
+        ctx.fillStyle = '#78716c';
+        for (let i = 0; i < 7; i++) {
+          const a = (i / 7) * Math.PI * 2;
+          ctx.beginPath();
+          ctx.ellipse(Math.cos(a) * 13, Math.sin(a) * 13, 6, 3.2, a, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.fillStyle = '#292524';
+        ctx.beginPath();
+        ctx.arc(0, 0, 8, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.save();
+        ctx.rotate(aim);
+        ctx.fillStyle = '#1c1917';
+        ctx.fillRect(2, -3, 16, 6);
+        ctx.fillStyle = '#a8a29e';
+        ctx.fillRect(14, -1.6, 7, 3.2);
+        ctx.restore();
+      } else if (t.kind === 'MG') {
+        ctx.fillStyle = '#334155';
+        ctx.fillRect(-14, -10, 28, 20);
+        ctx.fillStyle = '#0f172a';
+        ctx.fillRect(-10, -7, 20, 14);
+        ctx.save();
+        ctx.rotate(aim);
+        ctx.fillStyle = '#1e293b';
+        ctx.fillRect(0, -5, 20, 3);
+        ctx.fillRect(0, 2, 20, 3);
+        ctx.fillStyle = def.color;
+        ctx.fillRect(16, -5, 6, 3);
+        ctx.fillRect(16, 2, 6, 3);
+        ctx.restore();
+      } else if (t.kind === 'ROCKET') {
+        ctx.fillStyle = '#44403c';
+        ctx.fillRect(-12, -12, 24, 24);
+        ctx.save();
+        ctx.rotate(aim);
+        ctx.fillStyle = '#292524';
+        ctx.fillRect(0, -9, 22, 18);
+        ctx.fillStyle = '#7c2d12';
+        for (let i = -1; i <= 1; i++) ctx.fillRect(4, i * 5 - 1.4, 14, 2.8);
+        ctx.fillStyle = def.color;
+        ctx.fillRect(16, -2, 5, 4);
+        ctx.restore();
+      } else if (t.kind === 'FLAME') {
+        ctx.fillStyle = '#7f1d1d';
+        ctx.beginPath();
+        ctx.ellipse(-4, 2, 9, 6, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#450a0a';
+        ctx.fillRect(-8, -4, 10, 8);
+        ctx.save();
+        ctx.rotate(aim);
+        ctx.fillStyle = '#991b1b';
+        ctx.fillRect(0, -3, 14, 6);
+        ctx.fillStyle = '#f97316';
+        ctx.beginPath();
+        ctx.moveTo(14, 0);
+        ctx.lineTo(8, -4);
+        ctx.lineTo(8, 4);
+        ctx.fill();
+        if ((t.cool || 0) < 3) {
+          ctx.fillStyle = 'rgba(251, 146, 60, 0.85)';
+          ctx.beginPath();
+          ctx.moveTo(14, 0);
+          ctx.lineTo(32, -7);
+          ctx.lineTo(32, 7);
+          ctx.fill();
+        }
+        ctx.restore();
+      } else if (t.kind === 'SNIPER') {
+        ctx.strokeStyle = '#44403c';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(0, 0); ctx.lineTo(-12, 12);
+        ctx.moveTo(0, 0); ctx.lineTo(12, 12);
+        ctx.moveTo(0, 0); ctx.lineTo(0, 14);
+        ctx.stroke();
+        ctx.fillStyle = '#1c1917';
+        ctx.beginPath();
+        ctx.arc(0, 0, 5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.save();
+        ctx.rotate(aim);
+        ctx.fillStyle = '#e7e5e4';
+        ctx.fillRect(0, -1.4, 28, 2.8);
+        ctx.fillStyle = '#0f172a';
+        ctx.fillRect(8, -3.2, 8, 6.4);
+        ctx.restore();
+      } else if (t.kind === 'TESLA') {
+        ctx.fillStyle = '#155e75';
+        ctx.fillRect(-8, 4, 16, 8);
+        ctx.fillStyle = '#164e63';
+        ctx.fillRect(-3, -16, 6, 22);
+        ctx.strokeStyle = def.color;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(0, -8, 7, 0, Math.PI * 2);
+        ctx.arc(0, -16, 4, 0, Math.PI * 2);
+        ctx.stroke();
+        if ((t.cool || 99) > (def.rate || 30) - 6) {
+          ctx.strokeStyle = 'rgba(103, 232, 249, 0.9)';
+          ctx.beginPath();
+          ctx.moveTo(4, -16);
+          ctx.lineTo(14, -8);
+          ctx.lineTo(8, -4);
+          ctx.lineTo(18, 2);
+          ctx.stroke();
+        }
+      } else if (t.kind === 'MORTAR') {
+        ctx.fillStyle = '#3f3f46';
+        ctx.beginPath();
+        ctx.ellipse(0, 8, 14, 5, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.save();
+        ctx.rotate(aim - 0.7);
+        ctx.fillStyle = '#52525b';
+        ctx.fillRect(0, -4, 18, 8);
+        ctx.fillStyle = '#a3e635';
+        ctx.fillRect(14, -3, 6, 6);
+        ctx.restore();
+      } else {
+        ctx.fillStyle = '#1e1b4b';
+        ctx.fillRect(-16, -6, 32, 12);
+        ctx.fillStyle = '#312e81';
+        for (let i = -2; i <= 2; i++) ctx.fillRect(i * 6 - 1, -8, 2, 16);
+        ctx.save();
+        ctx.rotate(aim);
+        ctx.fillStyle = def.color;
+        ctx.fillRect(0, -2, 26, 4);
+        ctx.fillStyle = '#f5f3ff';
+        ctx.fillRect(22, -1, 8, 2);
+        ctx.restore();
+      }
+    }
+
+    function drawTowers() {
+      if (!zombie) return;
+      (zombie.towers || []).forEach(t => {
+        const def = towerDef(t.kind);
+        if (!def) return;
+        ctx.save();
+        ctx.translate(t.x, t.y);
+        drawTowerBody(t, def);
+        ctx.fillStyle = '#f8fafc';
+        ctx.font = 'bold 8px Orbitron';
+        ctx.textAlign = 'center';
+        ctx.fillText(def.name, 0, -24);
+        ctx.restore();
+        const maxHp = t.maxHp || t.hp || 1;
+        const ratio = Math.max(0, t.hp / maxHp);
+        ctx.fillStyle = 'rgba(0,0,0,0.55)';
+        ctx.fillRect(t.x - 16, t.y - 36, 32, 4);
+        ctx.fillStyle = ratio > 0.4 ? '#86efac' : '#ef4444';
+        ctx.fillRect(t.x - 16, t.y - 36, 32 * ratio, 4);
+      });
+      drawPlacementPreview();
+    }
+
+    function placementSpotOk(x, y, def) {
+      const lane = zombieLane();
+      if (x < lane.x + 36 || x > lane.right - 36 || y < lane.y + 50 || y > baseFrontY() - 28) return false;
+      if ((zombie.towers || []).some(t => Math.hypot(t.x - x, t.y - y) < 48)) return false;
+      if ((zombie.wrecks || []).some(w => Math.hypot(w.x - x, w.y - y) < 48)) return false;
+      if ((zombie.walls || []).some(w => w.hp > 0 && distToSeg(x, y, w).d < 22)) return false;
+      return (zombie.cash || 0) >= def.cost;
+    }
+
+    function drawPlacementPreview() {
+      if (!isZombies() || gameState !== 'PLAYING' || !towerPick || towerPick === 'WALL') return;
+      const def = towerDef(towerPick);
+      if (!def) return;
+      const x = mouse.worldX;
+      const y = mouse.worldY;
+      const ok = placementSpotOk(x, y, def);
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(x, y, def.range, 0, Math.PI * 2);
+      ctx.fillStyle = ok ? 'rgba(134, 239, 172, 0.12)' : 'rgba(248, 113, 113, 0.12)';
+      ctx.fill();
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = ok ? 'rgba(134, 239, 172, 0.85)' : 'rgba(248, 113, 113, 0.9)';
+      ctx.setLineDash([8, 6]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.globalAlpha = 0.78;
+      ctx.translate(x, y);
+      drawTowerBody({ kind: def.id, aim: -Math.PI / 2, cool: 99 }, def);
+      ctx.restore();
+    }
+
+    function drawWalls() {
+      if (!zombie) return;
+      (zombie.walls || []).forEach(w => {
+        if (!(w.hp > 0)) return;
+        const ratio = Math.max(0.15, w.hp / (w.maxHp || 90));
+        ctx.save();
+        ctx.strokeStyle = 'rgba(0,0,0,0.45)';
+        ctx.lineWidth = 16;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(w.x1 + 2, w.y1 + 3);
+        ctx.lineTo(w.x2 + 2, w.y2 + 3);
+        ctx.stroke();
+        ctx.strokeStyle = '#44403c';
+        ctx.lineWidth = 12;
+        ctx.beginPath();
+        ctx.moveTo(w.x1, w.y1);
+        ctx.lineTo(w.x2, w.y2);
+        ctx.stroke();
+        ctx.strokeStyle = '#a8a29e';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(w.x1, w.y1);
+        ctx.lineTo(w.x2, w.y2);
+        ctx.stroke();
+        if (ratio < 0.72) {
+          ctx.strokeStyle = 'rgba(28, 25, 23, 0.85)';
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.moveTo(w.x1 * 0.65 + w.x2 * 0.35, w.y1 * 0.65 + w.y2 * 0.35);
+          ctx.lineTo(w.x1 * 0.4 + w.x2 * 0.6, w.y1 * 0.4 + w.y2 * 0.6 + 6);
+          ctx.stroke();
+        }
+        ctx.fillStyle = '#292524';
+        ctx.beginPath();
+        ctx.arc(w.x1, w.y1, 5, 0, Math.PI * 2);
+        ctx.arc(w.x2, w.y2, 5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      });
+      if (!wallAnchor) return;
+      const d = Math.hypot(mouse.worldX - wallAnchor.x, mouse.worldY - wallAnchor.y);
+      const ang = Math.atan2(mouse.worldY - wallAnchor.y, mouse.worldX - wallAnchor.x);
+      const len = Math.min(d, WALL_REACH);
+      ctx.save();
+      ctx.strokeStyle = 'rgba(251, 191, 36, 0.28)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(wallAnchor.x, wallAnchor.y, WALL_REACH, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.strokeStyle = (d <= WALL_REACH && d >= 28) ? 'rgba(251, 191, 36, 0.95)' : 'rgba(248, 113, 113, 0.9)';
+      ctx.lineWidth = 8;
+      ctx.setLineDash([10, 7]);
+      ctx.beginPath();
+      ctx.moveTo(wallAnchor.x, wallAnchor.y);
+      ctx.lineTo(wallAnchor.x + Math.cos(ang) * len, wallAnchor.y + Math.sin(ang) * len);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = '#fdba74';
+      ctx.beginPath();
+      ctx.arc(wallAnchor.x, wallAnchor.y, 5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    function zombieName(type) {
+      return ({
+        ZOMBIE_WALKER: 'WALKER', ZOMBIE_CRAWLER: 'CRAWLER', ZOMBIE_RUNNER: 'RUNNER',
+        ZOMBIE_SPITTER: 'SPITTER', ZOMBIE_BRUTE: 'BRUTE', ZOMBIE_BLOATER: 'BLOATER',
+        ZOMBIE_SCREAMER: 'SCREAMER', ZOMBIE_LEAPER: 'LEAPER', ZOMBIE_JUGGERNAUT: 'JUGGERNAUT'
+      })[type] || 'WALKER';
+    }
+
+    function pickZombieKind(wave) {
+      const list = ['ZOMBIE_WALKER'];
+      if (wave >= 5) list.push('ZOMBIE_CRAWLER');
+      if (wave >= 10) list.push('ZOMBIE_RUNNER');
+      if (wave >= 16) list.push('ZOMBIE_SPITTER');
+      if (wave >= 22) list.push('ZOMBIE_BRUTE');
+      if (wave >= 28) list.push('ZOMBIE_BLOATER');
+      if (wave >= 34) list.push('ZOMBIE_SCREAMER');
+      if (wave >= 40) list.push('ZOMBIE_LEAPER');
+      if (wave >= 48) list.push('ZOMBIE_JUGGERNAUT');
+      const index = Math.min(list.length - 1, Math.floor(Math.pow(Math.random(), 0.62) * list.length));
+      return list[index];
+    }
+
+    function zombieStats(kind, wave) {
+      const table = {
+        ZOMBIE_WALKER: { hp: 70, speed: 0.58, bite: 8, baseDmg: 18, radius: 16 },
+        ZOMBIE_CRAWLER: { hp: 36, speed: 1.05, bite: 6, baseDmg: 12, radius: 10 },
+        ZOMBIE_RUNNER: { hp: 46, speed: 2.25, bite: 7, baseDmg: 14, radius: 13 },
+        ZOMBIE_SPITTER: { hp: 58, speed: 0.42, bite: 4, baseDmg: 10, radius: 15 },
+        ZOMBIE_BRUTE: { hp: 180, speed: 0.42, bite: 16, baseDmg: 42, radius: 22 },
+        ZOMBIE_BLOATER: { hp: 100, speed: 0.46, bite: 9, baseDmg: 28, radius: 20 },
+        ZOMBIE_SCREAMER: { hp: 52, speed: 0.5, bite: 5, baseDmg: 8, radius: 15 },
+        ZOMBIE_LEAPER: { hp: 72, speed: 0.66, bite: 12, baseDmg: 24, radius: 14 },
+        ZOMBIE_JUGGERNAUT: { hp: 380, speed: 0.28, bite: 22, baseDmg: 80, radius: 28 }
+      };
+      const base = table[kind] || table.ZOMBIE_WALKER;
+      const scale = 1 + (wave - 1) * 0.12;
+      return {
+        hp: base.hp * scale,
+        speed: base.speed + Math.min(0.28, wave * 0.01),
+        bite: base.bite + wave * 0.35,
+        baseDmg: base.baseDmg + wave * 1.5,
+        radius: base.radius * 1.45
+      };
+    }
+
+    function zombieSpawnSlot(slot) {
+      const bounds = playBounds();
+      const mid = (bounds.left + bounds.right) / 2;
+      return { x: mid + (slot - 1) * 90, y: zombieLane().bottom - 42 };
+    }
+
+    function zombiePublic() {
+      if (!zombie) return null;
+      return {
+        wave: zombie.wave, leftToSpawn: zombie.leftToSpawn, breakTimer: zombie.breakTimer,
+        baseHp: zombie.baseHp, baseMax: zombie.baseMax, over: zombie.over,
+        wrecks: zombie.wrecks || [], globs: zombie.globs || [],
+        cash: zombie.cash || 0, gems: zombie.gems || 0, owned: zombie.owned || { GUN: true },
+        towers: zombie.towers || [], walls: zombie.walls || [], score: localPlayer.score || 0
+      };
+    }
+
+    function refreshZombieHud() {
+      const row = document.getElementById('hudZombie');
+      if (!row) return;
+      row.classList.toggle('hidden', !isZombies() || !zombie);
+      if (!isZombies() || !zombie) return;
+      const wave = document.getElementById('hudZombieWave');
+      const base = document.getElementById('hudZombieBase');
+      const best = document.getElementById('hudZombieBest');
+      if (wave) wave.textContent = zombie.breakTimer > 0 ? (zombie.wave + ' NEXT') : String(zombie.wave);
+      if (base) base.textContent = Math.max(0, Math.ceil(zombie.baseHp)) + '/' + zombie.baseMax;
+      if (best) best.textContent = Math.max(accountZombieBest.wave || 0, zombie.bestWave || 0);
+      const cash = document.getElementById('hudZombieCash');
+      const gems = document.getElementById('hudZombieGems');
+      if (cash) cash.textContent = Math.floor(zombie.cash || 0);
+      if (gems) gems.textContent = Math.floor(zombie.gems || 0);
+      refreshTowerShop();
+      const infected = document.getElementById('hudInfection');
+      if (infected) infected.classList.toggle('hidden', !(localPlayer.infection > 0));
+    }
+
+    function applyZombieState(state) {
+      if (!state) return;
+      if (!zombie) zombie = { seenWave: 0, bestScore: 0, bestWave: 1 };
+      const prev = zombie.wave || 0;
+      zombie.wave = state.wave || 1;
+      zombie.leftToSpawn = state.leftToSpawn || 0;
+      zombie.breakTimer = state.breakTimer || 0;
+      zombie.baseHp = state.baseHp;
+      zombie.baseMax = state.baseMax || 1000;
+      zombie.over = !!state.over;
+      if (state.wrecks) zombie.wrecks = state.wrecks;
+      if (state.globs) zombie.globs = state.globs;
+      if (state.cash != null) zombie.cash = state.cash;
+      if (state.gems != null) zombie.gems = state.gems;
+      if (state.owned) zombie.owned = state.owned;
+      if (state.towers) zombie.towers = state.towers;
+      if (state.walls) zombie.walls = state.walls;
+      if (typeof state.score === 'number') localPlayer.score = state.score;
+      if (zombie.wave !== prev) noteZombieWave();
+      refreshZombieHud();
+    }
+
+    function noteZombieWave() {
+      if (!zombie) return;
+      if (zombie.seenWave === zombie.wave) return;
+      const prev = zombie.seenWave || 0;
+      zombie.seenWave = zombie.wave;
+      if (prev > 0 && zombie.wave > prev) {
+        const calls = ['CONTACT NORTH', 'THEY BROKE THE TREE LINE', 'HOLD THE WIRE', 'STAY AIRBORNE', 'DO NOT LET THEM IN'];
+        floatingTexts.push({ x: localPlayer.x, y: localPlayer.y - 48, text: 'NIGHT ' + zombie.wave + ' · ' + calls[zombie.wave % calls.length], color: '#bef264', life: 90 });
+        reviveDownedPilot();
+        if (isHost) grantZombiePay(3 + zombie.wave, zombie.wave % 4 === 0 ? 1 : 0, localPlayer.x, localPlayer.y - 24);
+      }
+      refreshZombieHud();
+    }
+
+    function livingPilots() {
+      let n = localPlayer.hp > 0 ? 1 : 0;
+      Object.values(remotePlayers).forEach(rp => { if (rp.hp > 0) n++; });
+      return n;
+    }
+
+    function rememberZombieBest() {
+      const score = localPlayer.score || 0;
+      const wave = zombie ? zombie.wave : 1;
+      zombie.bestScore = Math.max(zombie.bestScore || 0, score);
+      zombie.bestWave = Math.max(zombie.bestWave || 1, wave);
+      const prevWave = accountZombieBest.wave || 0;
+      const prevScore = accountZombieBest.score || 0;
+      const beat = wave > prevWave || (wave === prevWave && score > prevScore);
+      if (signedInName && beat) {
+        accountZombieBest = { wave: wave, score: score };
+        postFeedback({ op: 'zbest', name: signedInName, wave: wave, score: score }).catch(() => {});
+        try { localStorage.setItem('apacheCopterZombieBest:' + accountKey(signedInName), JSON.stringify(accountZombieBest)); } catch (err) {}
+      }
+      try {
+        localStorage.setItem('apacheCopterZombieBest', String(zombie.bestScore));
+        localStorage.setItem('apacheCopterZombieWave', String(zombie.bestWave));
+      } catch (err) {}
+    }
+
+    function finishZombieRun(reason, remote) {
+      if (!isZombies() || !zombie || zombie.over) return;
+      zombie.over = true;
+      zombie.baseHp = Math.max(0, zombie.baseHp || 0);
+      rememberZombieBest();
+      const title = document.getElementById('deathTitle');
+      const subtitle = document.getElementById('deathSubtitle');
+      const bestRow = document.getElementById('finalBestRow');
+      const best = document.getElementById('finalBest');
+      const button = document.getElementById('respawnBtn');
+      if (title) title.textContent = 'RUN OVER';
+      if (subtitle) subtitle.textContent = reason || 'THE HORDE BROKE THROUGH';
+      document.getElementById('finalScore').innerText = localPlayer.score;
+      document.getElementById('finalLevel').innerText = 'WAVE ' + zombie.wave;
+      if (bestRow) {
+        bestRow.style.display = 'flex';
+        const label = bestRow.querySelector('span');
+        if (label) label.textContent = 'BEST NIGHT:';
+      }
+      if (best) best.textContent = Math.max(accountZombieBest.wave || 0, zombie.bestWave || 1);
+      if (button) button.textContent = isHost ? 'TRY AGAIN' : 'BACK TO MENU';
+      gameState = 'DEAD';
+      showModal('deathOverlay');
+      refreshZombieHud();
+      if (isHost && isOnlineMatch() && !remote) broadcast({ type: 'ZOMBIE_LOST', reason: reason, wave: zombie.wave });
+    }
+
+    function reviveDownedPilot() {
+      if (!isZombies() || !zombie || zombie.over || localPlayer.hp > 0) return;
+      const spot = zombieSpawnSlot(isHost ? 0 : 1);
+      localPlayer.hp = getStatVal('maxHp');
+      localPlayer.infection = 0;
+      localPlayer.x = spot.x;
+      localPlayer.y = spot.y;
+      localPlayer.vx = 0;
+      localPlayer.vy = 0;
+      floatingTexts.push({ x: spot.x, y: spot.y - 30, text: 'BACK IN THE FIGHT', color: '#86efac', life: 70 });
+      updateHUD();
+      if (isOnlineMatch()) sendPose();
+    }
+
+    function downPilot() {
+      localPlayer.hp = 0;
+      createExplosion(localPlayer.x, localPlayer.y, 50, 0, null);
+      updateHUD();
+      if (isOnlineMatch()) sendPose();
+      if (livingPilots() <= 0) finishZombieRun('The pilots were overrun.');
+      else floatingTexts.push({ x: localPlayer.x, y: localPlayer.y - 36, text: 'DOWN — NEXT WAVE', color: '#fca5a5', life: 90 });
+    }
+
+    function resetZombieRun() {
+      let bestScore = 0;
+      let bestWave = 1;
+      try {
+        bestScore = Number(localStorage.getItem('apacheCopterZombieBest') || 0);
+        bestWave = Number(localStorage.getItem('apacheCopterZombieWave') || 0);
+      } catch (err) {}
+      const lane = zombieLane();
+      bestWave = Math.max(bestWave, accountZombieBest.wave || 0);
+      bestScore = Math.max(bestScore, accountZombieBest.score || 0);
+      localPlayer.score = 0;
+      towerPick = 'GUN';
+      wallAnchor = null;
+      zombie = { wave: 1, leftToSpawn: 8, spawnTimer: 40, breakTimer: 0, baseHp: 800, baseMax: 800, over: false, seenWave: 0, bestScore: bestScore, bestWave: bestWave, globs: [], cash: 80, gems: 0, owned: { GUN: true }, towers: [], walls: [] };
+      zombie.wrecks = [0.32, 0.52, 0.72].map((t, i) => ({
+        x: lane.x + lane.w * (i % 2 ? 0.3 : 0.7),
+        y: lane.y + 80 + (lane.h - 280) * t
+      }));
+      noteZombieWave();
+    }
+
+    function infectPilot(amount) {
+      const before = localPlayer.infection || 0;
+      localPlayer.infection = Math.min(480, before + amount);
+      if (before <= 0) floatingTexts.push({ x: localPlayer.x, y: localPlayer.y - 24, text: 'INFECTED', color: '#a3e635', life: 50 });
+      refreshZombieHud();
+    }
+
+    function dropScavenge() {
+      const lane = zombieLane();
+      const c = makeCrate('scavenge_' + zombie.wave, lane.x + lane.w * 0.5 + (Math.random() - 0.5) * 80, baseFrontY() - 70, false);
+      c.kind = 'SCAVENGE';
+      c.hp = 18;
+      c.maxHp = 18;
+      c.xp = 25;
+      c.size = 16;
+      crates.push(c);
+      floatingTexts.push({ x: c.x, y: c.y - 16, text: 'SUPPLY DROP', color: '#fde68a', life: 80 });
+      if (isOnlineMatch()) broadcast({ type: 'SPAWN_CRATES', crates: [c] });
+    }
+
+    function burstBloater(u) {
+      createExplosion(u.x, u.y, 78, 0, null);
+      if (!isHost || !zombie || zombie.over) return;
+      zombie.baseHp -= 18;
+      const close = (ent) => ent && ent.hp > 0 && Math.hypot(ent.x - u.x, ent.y - u.y) < 100;
+      if (close(localPlayer) && !isGodMode) {
+        applyHullDamage(22);
+        infectPilot(120);
+        updateHUD();
+        if (localPlayer.hp <= 0) downPilot();
+      }
+      if (isOnlineMatch()) {
+        Object.values(remotePlayers).forEach(rp => {
+          if (close(rp)) broadcast({ type: 'HIT', targetId: rp.id, damage: 22, shooterId: u.id, weapon: 'ZOMBIE' });
+        });
+      }
+      if (zombie.baseHp <= 0) finishZombieRun('A bloater blew the wire.');
+    }
+
+    function placeLocalAtBase() {
+      const spot = zombieSpawnSlot(isHost ? 0 : 1 + Object.keys(remotePlayers).length);
+      localPlayer.x = spot.x;
+      localPlayer.y = spot.y;
+      localPlayer.vx = 0;
+      localPlayer.vy = 0;
+      camera.x = spot.x;
+      camera.y = spot.y;
+    }
+
+    function spawnZombie() {
+      const lane = zombieLane();
+      const wave = zombie.wave;
+      const kind = pickZombieKind(wave);
+      const stats = zombieStats(kind, wave);
+      const hp = stats.hp;
+      const speed = stats.speed;
+      const bite = stats.bite;
+      const baseDmg = stats.baseDmg;
+      const radius = stats.radius;
+      const x = lane.x + 50 + Math.random() * (lane.w - 100);
+      pveUnits.push({
+        id: 'zed_' + Math.random().toString(36).substr(2, 6),
+        type: kind,
+        x: x,
+        y: lane.y + 60,
+        vx: 0, vy: speed,
+        angle: Math.PI / 2,
+        hullAngle: Math.PI / 2,
+        turretAngle: Math.PI / 2,
+        hp: hp,
+        maxHp: hp,
+        speed: speed,
+        bite: bite,
+        biteTimer: 0,
+        baseDmg: baseDmg,
+        radius: radius,
+        spitTimer: 70,
+        leapTimer: 50
+      });
+    }
+
+    function updateZombieDirector(dt) {
+      if (!zombie || zombie.over) return;
+      reapDefenses();
+      if (zombie.breakTimer > 0) {
+        zombie.breakTimer -= dt;
+        if (zombie.breakTimer <= 0) {
+          zombie.leftToSpawn = 6 + zombie.wave * 3;
+          zombie.spawnTimer = 20;
+        }
+        refreshZombieHud();
+        return;
+      }
+      const alive = pveUnits.filter(u => u.type && u.type.startsWith('ZOMBIE') && u.hp > 0).length;
+      if (zombie.leftToSpawn <= 0 && alive === 0) {
+        zombie.wave += 1;
+        zombie.breakTimer = 160;
+        noteZombieWave();
+        return;
+      }
+      zombie.spawnTimer -= dt;
+      const cap = 8 + zombie.wave * 2;
+      if (zombie.leftToSpawn > 0 && alive < cap && zombie.spawnTimer <= 0) {
+        spawnZombie();
+        zombie.leftToSpawn--;
+        zombie.spawnTimer = Math.max(26, 84 - zombie.wave * 1.2);
+      }
+      if (livingPilots() <= 0) finishZombieRun('The pilots were overrun.');
+      zombie.globs = (zombie.globs || []).filter(g => {
+        g.x += g.vx * dt;
+        g.y += g.vy * dt;
+        g.life -= dt;
+        if (localPlayer.hp > 0 && Math.hypot(g.x - localPlayer.x, g.y - localPlayer.y) < 24) {
+          if (!isGodMode) {
+            applyHullDamage(7);
+            infectPilot(80);
+            updateHUD();
+            if (localPlayer.hp <= 0) downPilot();
+          }
+          g.life = 0;
+        }
+        Object.values(remotePlayers).forEach(rp => {
+          if (g.life > 0 && rp.hp > 0 && Math.hypot(g.x - rp.x, g.y - rp.y) < 24) {
+            if (isOnlineMatch()) broadcast({ type: 'HIT', targetId: rp.id, damage: 7, shooterId: 'spit', weapon: 'ZOMBIE' });
+            g.life = 0;
+          }
+        });
+        (zombie.towers || []).forEach(t => {
+          if (g.life > 0 && t.hp > 0 && Math.hypot(g.x - t.x, g.y - t.y) < 26) {
+            hurtTower(t, 9);
+            g.life = 0;
+          }
+        });
+        (zombie.walls || []).forEach(w => {
+          if (g.life > 0 && w.hp > 0 && distToSeg(g.x, g.y, w).d < 16) {
+            hurtWall(w, 9);
+            g.life = 0;
+          }
+        });
+        if (g.y >= baseFrontY()) {
+          zombie.baseHp -= 10;
+          g.life = 0;
+          if (zombie.baseHp <= 0) finishZombieRun('Acid ate through the base.');
+        }
+        return g.life > 0;
+      });
+      updateTowers(dt);
+      refreshZombieHud();
+    }
+
+    function stepZombie(u, dt) {
+      if (!zombie || zombie.over) return;
+      const bounds = playBounds();
+      let tx = u.x;
+      let ty = baseFrontY() + 20;
+      let chase = null;
+      let chaseDist = u.type === 'ZOMBIE_SPITTER' ? 90 : 120;
+      const marked = nearestTower(u.x, u.y, u.type === 'ZOMBIE_SPITTER' ? 200 : 260);
+      const consider = (ent) => {
+        if (!ent || ent.hp <= 0 || ent.cloak > 0) return;
+        const dist = Math.hypot(ent.x - u.x, ent.y - u.y);
+        if (dist < chaseDist) { chaseDist = dist; chase = ent; }
+      };
+      consider(localPlayer);
+      Object.values(remotePlayers).forEach(consider);
+      if (marked) { tx = marked.tower.x; ty = marked.tower.y; }
+      else if (chase) { tx = chase.x; ty = chase.y; }
+      const ang = Math.atan2(ty - u.y, tx - u.x);
+      u.vx = Math.cos(ang) * u.speed;
+      u.vy = Math.sin(ang) * u.speed;
+      u.hullAngle = ang;
+      u.turretAngle = ang;
+      const nextX = u.x + u.vx * dt;
+      const nextY = u.y + u.vy * dt;
+      let blocked = null;
+      let blockD = 18;
+      (zombie.walls || []).forEach(w => {
+        if (!(w.hp > 0)) return;
+        const hit = distToSeg(nextX, nextY, w);
+        if (hit.d < blockD) { blockD = hit.d; blocked = w; }
+      });
+      if (blocked) {
+        u.biteTimer = (u.biteTimer || 0) - dt;
+        if (u.biteTimer <= 0) {
+          u.biteTimer = 26;
+          hurtWall(blocked, u.bite || 8);
+        }
+      } else if (marked && marked.dist < 36) {
+        u.biteTimer = (u.biteTimer || 0) - dt;
+        if (u.biteTimer <= 0) {
+          u.biteTimer = 26;
+          hurtTower(marked.tower, (u.bite || 8) * (u.type === 'ZOMBIE_BRUTE' || u.type === 'ZOMBIE_JUGGERNAUT' ? 1.6 : 1));
+        }
+      } else {
+        u.x = nextX;
+        u.y = nextY;
+      }
+      if (u.x < bounds.left) u.x = bounds.left;
+      if (u.x > bounds.right) u.x = bounds.right;
+      (zombie.wrecks || []).forEach(w => {
+        if (Math.hypot(u.x - w.x, u.y - w.y) < 42) u.y -= u.vy * dt * 0.72;
+      });
+      if (u.type === 'ZOMBIE_SPITTER' && u.y < baseFrontY() - 160) {
+        u.spitTimer = (u.spitTimer || 0) - dt;
+        if (u.spitTimer <= 0) {
+          u.spitTimer = 100;
+          const aimX = marked ? marked.tower.x : (chase ? chase.x : localPlayer.x);
+          zombie.globs = zombie.globs || [];
+          zombie.globs.push({ x: u.x, y: u.y + 8, vx: Math.max(-1.6, Math.min(1.6, (aimX - u.x) * 0.01)), vy: 2.4, life: 140 });
+        }
+      }
+      if (u.type === 'ZOMBIE_LEAPER') {
+        u.leapTimer = (u.leapTimer || 0) - dt;
+        if (u.leapTimer <= 0 && u.y < baseFrontY() - 40) {
+          let blockedLeap = null;
+          (zombie.walls || []).forEach(w => {
+            if (!(w.hp > 0) || blockedLeap) return;
+            if (distToSeg(u.x, u.y + 40, w).d < 24) blockedLeap = w;
+          });
+          if (blockedLeap) {
+            u.leapTimer = 36;
+            hurtWall(blockedLeap, u.bite || 8);
+          } else {
+            u.leapTimer = 80;
+            u.y += 78;
+            floatingTexts.push({ x: u.x, y: u.y, text: 'LEAP', color: '#fde68a', life: 20 });
+          }
+        }
+      }
+      if (u.type === 'ZOMBIE_SCREAMER' && !u.screamed && u.y > zombieLane().y + zombieLane().h * 0.28) {
+        u.screamed = true;
+        zombie.leftToSpawn += 4;
+        floatingTexts.push({ x: u.x, y: u.y - 20, text: 'SCREAM', color: '#f87171', life: 50 });
+      }
+      pveUnits.forEach(other => {
+        if (other === u || !other.type || !other.type.startsWith('ZOMBIE')) return;
+        const gap = Math.hypot(u.x - other.x, u.y - other.y);
+        if (gap > 0 && gap < 32) u.x += ((u.x - other.x) / gap) * 0.6;
+      });
+      if (chase && chaseDist < (u.radius || 18) + 28) {
+        u.biteTimer = (u.biteTimer || 0) - dt;
+        if (u.biteTimer <= 0) {
+          u.biteTimer = 36;
+          if (chase.id === localPlayer.id && !isGodMode) {
+            applyHullDamage(u.bite || 8);
+            infectPilot(u.type === 'ZOMBIE_BLOATER' ? 150 : 90);
+            updateHUD();
+            if (localPlayer.hp <= 0) downPilot();
+          } else if (remotePlayers[chase.id] && isOnlineMatch()) {
+            broadcast({ type: 'HIT', targetId: chase.id, damage: u.bite || 8, shooterId: u.id, weapon: 'ZOMBIE' });
+          }
+        }
+      }
+      if (u.y >= baseFrontY()) {
+        zombie.baseHp -= u.baseDmg || 20;
+        floatingTexts.push({ x: u.x, y: baseFrontY(), text: '-' + Math.ceil(u.baseDmg || 20), color: '#f87171', life: 40 });
+        u.hp = 0;
+        refreshZombieHud();
+        if (zombie.baseHp <= 0) finishZombieRun('The zombies reached the base.');
+      }
+    }
+
+    function restartZombieRun() {
+      hideModal('deathOverlay');
+      if (!isHost) {
+        exitToMenu();
+        return;
+      }
+      STATS.forEach(st => st.val = 0);
+      localPlayer.level = 0;
+      localPlayer.tokens = 0;
+      localPlayer.xp = 0;
+      localPlayer.xpToNext = 25;
+      localPlayer.score = 0;
+      localPlayer.playerClass = null;
+      localPlayer.heliModel = null;
+      localPlayer.power = null;
+      localPlayer.powerUsed = false;
+      localPlayer.power2 = null;
+      localPlayer.power2Used = false;
+      localPlayer.hp = getStatVal('maxHp');
+      localPlayer.infection = 0;
+      localPlayer.rockets = getStatVal('maxRockets');
+      localPlayer.flares = getStatVal('maxFlares');
+      gameState = 'PLAYING';
+      initWorld();
+      placeLocalAtBase();
+      updateHUD();
+      renderStatTreeUI();
+      refreshTowerShop();
+    }
+
+    function drawZombieCorridor() {
+      const lane = zombieLane();
+      ctx.fillStyle = '#07080a';
+      ctx.fillRect(lane.x - 70, lane.y - 50, lane.w + 140, lane.h + 100);
+      ctx.fillStyle = '#12160f';
+      ctx.fillRect(lane.x - 36, lane.y, 36, lane.h);
+      ctx.fillRect(lane.right, lane.y, 36, lane.h);
+      ctx.fillStyle = '#2a261f';
+      ctx.fillRect(lane.x, lane.y, lane.w, lane.h);
+      ctx.fillStyle = '#1c1915';
+      ctx.fillRect(lane.x + 18, lane.y, 22, lane.h);
+      ctx.fillRect(lane.right - 40, lane.y, 22, lane.h);
+      ctx.fillStyle = '#3a342b';
+      ctx.fillRect(lane.x + 46, lane.y, lane.w - 92, lane.h);
+      for (let i = 0; i < 18; i++) {
+        const patchY = lane.y + 40 + i * 112;
+        ctx.fillStyle = i % 2 ? 'rgba(68, 56, 40, 0.35)' : 'rgba(24, 20, 16, 0.28)';
+        ctx.fillRect(lane.x + 70 + (i % 3) * 36, patchY, lane.w - 180 - (i % 4) * 20, 46);
+      }
+      ctx.strokeStyle = 'rgba(250, 204, 21, 0.55)';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      for (let y = lane.y + 24; y < baseFrontY() - 10; y += 46) {
+        ctx.moveTo(lane.x + lane.w / 2, y);
+        ctx.lineTo(lane.x + lane.w / 2, y + 18);
+      }
+      ctx.stroke();
+      ctx.strokeStyle = 'rgba(226, 232, 240, 0.28)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(lane.x + 52, lane.y + 8);
+      ctx.lineTo(lane.x + 52, baseFrontY());
+      ctx.moveTo(lane.right - 52, lane.y + 8);
+      ctx.lineTo(lane.right - 52, baseFrontY());
+      ctx.stroke();
+      ctx.strokeStyle = 'rgba(28, 25, 23, 0.55)';
+      ctx.lineWidth = 1;
+      for (let i = 0; i < 9; i++) {
+        const y = lane.y + 90 + i * 210;
+        const x = lane.x + 90 + (i % 3) * 70;
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.lineTo(x + 80 + (i % 2) * 40, y + 18);
+        ctx.moveTo(x + 30, y + 8);
+        ctx.lineTo(x + 10, y + 46);
+        ctx.stroke();
+      }
+      for (let i = 0; i < 7; i++) {
+        const y = lane.y + 160 + i * 250;
+        const x = lane.x + 140 + (i % 2) * 280;
+        ctx.fillStyle = 'rgba(30, 41, 59, 0.35)';
+        ctx.beginPath();
+        ctx.ellipse(x, y, 34, 14, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = 'rgba(148, 163, 184, 0.18)';
+        ctx.beginPath();
+        ctx.ellipse(x - 6, y - 3, 10, 4, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      for (let y = lane.y + 20; y < lane.bottom; y += 64) {
+        ctx.fillStyle = '#1c1917';
+        ctx.fillRect(lane.x - 8, y, 8, 28);
+        ctx.fillRect(lane.right, y, 8, 28);
+        ctx.strokeStyle = 'rgba(120, 113, 108, 0.45)';
+        ctx.beginPath();
+        ctx.moveTo(lane.x - 30, y + 8);
+        ctx.lineTo(lane.x, y + 8);
+        ctx.moveTo(lane.right, y + 8);
+        ctx.lineTo(lane.right + 30, y + 8);
+        ctx.stroke();
+      }
+      for (let i = 0; i < 8; i++) {
+        const side = i % 2 ? 1 : -1;
+        const x = side < 0 ? lane.x - 22 : lane.right + 22;
+        const y = lane.y + 30 + i * 250;
+        ctx.fillStyle = '#14532d';
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.lineTo(x - 16, y - 34);
+        ctx.lineTo(x + 16, y - 34);
+        ctx.fill();
+        ctx.fillStyle = '#3f6212';
+        ctx.beginPath();
+        ctx.moveTo(x, y - 16);
+        ctx.lineTo(x - 10, y - 48);
+        ctx.lineTo(x + 10, y - 48);
+        ctx.fill();
+        ctx.fillStyle = '#44403c';
+        ctx.fillRect(x - 2, y, 4, 16);
+      }
+      for (let y = lane.y + 180; y < baseFrontY(); y += 320) {
+        ctx.fillStyle = '#292524';
+        ctx.fillRect(lane.x + 58, y, 6, 46);
+        ctx.fillRect(lane.right - 64, y, 6, 46);
+        ctx.fillStyle = 'rgba(253, 224, 71, 0.55)';
+        ctx.beginPath();
+        ctx.arc(lane.x + 61, y, 5, 0, Math.PI * 2);
+        ctx.arc(lane.right - 61, y, 5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      const fog = ctx.createLinearGradient(0, lane.y - 10, 0, lane.y + 280);
+      fog.addColorStop(0, 'rgba(63, 68, 42, 0.72)');
+      fog.addColorStop(1, 'rgba(63, 68, 42, 0)');
+      ctx.fillStyle = fog;
+      ctx.fillRect(lane.x, lane.y, lane.w, 280);
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.45)';
+      for (let i = 0; i < 11; i++) {
+        const x = lane.x + 20 + i * 78;
+        ctx.fillRect(x, lane.y - 6, 10, 18 + (i % 3) * 8);
+      }
+      (zombie && zombie.wrecks || []).forEach(w => {
+        ctx.save();
+        ctx.translate(w.x, w.y);
+        ctx.fillStyle = '#1c1917';
+        ctx.fillRect(-22, -10, 44, 20);
+        ctx.fillStyle = '#44403c';
+        ctx.fillRect(-16, -7, 18, 8);
+        ctx.fillStyle = '#7f1d1d';
+        ctx.fillRect(6, -4, 10, 6);
+        ctx.restore();
+      });
+      (zombie && zombie.globs || []).forEach(g => {
+        ctx.fillStyle = 'rgba(163, 230, 53, 0.85)';
+        ctx.beginPath();
+        ctx.arc(g.x, g.y, 6, 0, Math.PI * 2);
+        ctx.fill();
+      });
+      const ash = performance.now() / 1000;
+      ctx.fillStyle = 'rgba(231, 229, 228, 0.28)';
+      for (let i = 0; i < 16; i++) {
+        ctx.fillRect(lane.x + ((i * 91 + ash * 24) % lane.w), lane.y + ((i * 47 + ash * 40) % lane.h), 2, 2);
+      }
+      drawWalls();
+      ctx.fillStyle = '#1f2933';
+      ctx.fillRect(lane.x, baseFrontY(), lane.w, lane.bottom - baseFrontY());
+      ctx.fillStyle = '#334155';
+      for (let x = lane.x + 8; x < lane.right; x += 22) {
+        ctx.fillRect(x, baseFrontY() + 10, 16, 7);
+        ctx.fillRect(x + 8, baseFrontY() + 16, 16, 7);
+      }
+      ctx.fillStyle = '#0f172a';
+      ctx.fillRect(lane.x + lane.w / 2 - 70, lane.bottom - 28, 140, 16);
+      const ratio = zombie ? Math.max(0, zombie.baseHp / zombie.baseMax) : 1;
+      ctx.fillStyle = '#65a30d';
+      ctx.fillRect(lane.x, baseFrontY(), lane.w * ratio, 8);
+      ctx.fillStyle = '#ecfccb';
+      ctx.font = 'bold 16px Orbitron';
+      ctx.textAlign = 'center';
+      ctx.fillText('SHOP — BUY TOWERS WITH GEMS', (lane.x + lane.right) / 2, lane.bottom - 18);
+      const slotW = lane.w / TOWER_DEFS.length;
+      ctx.font = 'bold 9px Orbitron';
+      TOWER_DEFS.forEach((def, i) => {
+        const x = lane.x + slotW * i;
+        const owned = zombie && zombie.owned && zombie.owned[def.id];
+        const picked = towerPick === def.id;
+        ctx.fillStyle = picked ? 'rgba(250, 204, 21, 0.38)' : (owned ? 'rgba(22, 101, 52, 0.62)' : 'rgba(28, 25, 23, 0.78)');
+        ctx.fillRect(x + 3, baseFrontY() + 18, slotW - 6, 78);
+        ctx.fillStyle = def.color;
+        ctx.fillRect(x + slotW / 2 - 7, baseFrontY() + 26, 14, 14);
+        ctx.fillStyle = '#f8fafc';
+        ctx.fillText(def.name, x + slotW / 2, baseFrontY() + 54);
+        ctx.fillStyle = owned ? '#86efac' : '#fde68a';
+        ctx.fillText(owned ? 'OWNED' : ('BUY ◆' + def.gems), x + slotW / 2, baseFrontY() + 68);
+      });
+      ctx.strokeStyle = 'rgba(234, 179, 8, 0.45)';
+      ctx.lineWidth = 4;
+      ctx.strokeRect(lane.x, lane.y, lane.w, lane.h);
+      if (wallAnchor) drawWalls();
+    }
+
+    function drawZombieFigure(u) {
+      const kind = u.type;
+      ctx.save();
+      ctx.translate(u.x, u.y);
+      ctx.rotate(u.hullAngle || Math.PI / 2);
+      const sc = 1.7 * (kind === 'ZOMBIE_JUGGERNAUT' ? 1.65 : (kind === 'ZOMBIE_BRUTE' || kind === 'ZOMBIE_BLOATER' ? 1.28 : (kind === 'ZOMBIE_CRAWLER' ? 0.72 : (kind === 'ZOMBIE_RUNNER' ? 0.86 : 1))));
+      ctx.scale(sc, kind === 'ZOMBIE_CRAWLER' ? sc * 0.5 : sc);
+      ctx.fillStyle = 'rgba(0,0,0,0.35)';
+      ctx.beginPath();
+      ctx.ellipse(2, 7, 12, 5, 0, 0, Math.PI * 2);
+      ctx.fill();
+      const skin = kind === 'ZOMBIE_BLOATER' ? '#a3e635' : (kind === 'ZOMBIE_SPITTER' ? '#65a30d' : (kind === 'ZOMBIE_JUGGERNAUT' ? '#365314' : '#4d7c0f'));
+      ctx.fillStyle = '#1c1917';
+      ctx.fillRect(-8, -4, 16, 8);
+      ctx.fillStyle = skin;
+      ctx.beginPath();
+      ctx.arc(9, 0, kind === 'ZOMBIE_SCREAMER' ? 5.2 : 3.6, 0, Math.PI * 2);
+      ctx.fill();
+      if (kind === 'ZOMBIE_SCREAMER') {
+        ctx.fillStyle = '#111827';
+        ctx.beginPath();
+        ctx.arc(11, 0, 2.1, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.strokeStyle = skin;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(1, -4); ctx.lineTo(9, -8);
+      ctx.moveTo(1, 4); ctx.lineTo(9, 8);
+      if (kind === 'ZOMBIE_LEAPER') {
+        ctx.moveTo(-7, -2); ctx.lineTo(-14, -8);
+        ctx.moveTo(-7, 2); ctx.lineTo(-14, 8);
+      }
+      ctx.stroke();
+      if (kind === 'ZOMBIE_SPITTER' || kind === 'ZOMBIE_BLOATER') {
+        ctx.fillStyle = kind === 'ZOMBIE_BLOATER' ? 'rgba(163, 230, 53, 0.9)' : '#bef264';
+        ctx.beginPath();
+        ctx.ellipse(-1, 0, kind === 'ZOMBIE_BLOATER' ? 8 : 5, kind === 'ZOMBIE_BLOATER' ? 7 : 4, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+
+    function drawZombieMinimap() {
+      const lane = zombieLane();
+      mctx.clearRect(0, 0, 140, 140);
+      mctx.fillStyle = '#1a120c';
+      mctx.fillRect(0, 0, 140, 140);
+      const sx = 140 / lane.w;
+      const sy = 140 / lane.h;
+      const px = (x) => (x - lane.x) * sx;
+      const py = (y) => (y - lane.y) * sy;
+      mctx.fillStyle = '#3b3226';
+      mctx.fillRect(px(lane.x + 28), py(lane.y + 18), (lane.w - 56) * sx, (lane.h - 36) * sy);
+      mctx.fillStyle = '#166534';
+      mctx.fillRect(px(lane.x + 28), py(baseFrontY()), (lane.w - 56) * sx, (lane.bottom - baseFrontY()) * sy);
+      (zombie && zombie.walls || []).forEach(w => {
+        if (!(w.hp > 0)) return;
+        mctx.strokeStyle = '#d6d3d1';
+        mctx.lineWidth = 1;
+        mctx.beginPath();
+        mctx.moveTo(px(w.x1), py(w.y1));
+        mctx.lineTo(px(w.x2), py(w.y2));
+        mctx.stroke();
+      });
+      (zombie && zombie.towers || []).forEach(t => {
+        if (!(t.hp > 0)) return;
+        mctx.fillStyle = '#fbbf24';
+        mctx.fillRect(px(t.x) - 1.5, py(t.y) - 1.5, 3, 3);
+      });
+      pveUnits.forEach(u => {
+        if (!u || u.hp <= 0) return;
+        mctx.fillStyle = u.type === 'ZOMBIE_JUGGERNAUT' || u.type === 'ZOMBIE_BRUTE' ? '#b91c1c' : (u.type === 'ZOMBIE_BLOATER' || u.type === 'ZOMBIE_SPITTER' ? '#a3e635' : (u.type === 'ZOMBIE_RUNNER' || u.type === 'ZOMBIE_LEAPER' ? '#f97316' : '#84cc16'));
+        mctx.fillRect(px(u.x) - 1.5, py(u.y) - 1.5, 3, 3);
+      });
+      Object.values(remotePlayers).forEach(rp => {
+        if (!(rp.hp > 0)) return;
+        mctx.fillStyle = rp.color || '#22c55e';
+        mctx.beginPath();
+        mctx.arc(px(rp.x), py(rp.y), 3, 0, Math.PI * 2);
+        mctx.fill();
+      });
+      if (localPlayer.hp > 0) {
+        mctx.fillStyle = '#38bdf8';
+        mctx.beginPath();
+        mctx.arc(px(localPlayer.x), py(localPlayer.y), 3.5, 0, Math.PI * 2);
+        mctx.fill();
+      }
+    }
+
+    function drawZombieTactical() {
+      const lane = zombieLane();
+      const w = tacticalCanvas.width;
+      const h = tacticalCanvas.height;
+      tctx.clearRect(0, 0, w, h);
+      tctx.fillStyle = '#1a120c';
+      tctx.fillRect(0, 0, w, h);
+      const sx = w / lane.w;
+      const sy = h / lane.h;
+      const px = (x) => (x - lane.x) * sx;
+      const py = (y) => (y - lane.y) * sy;
+      tctx.fillStyle = '#3b3226';
+      tctx.fillRect(px(lane.x + 28), py(lane.y + 18), (lane.w - 56) * sx, (lane.h - 36) * sy);
+      tctx.fillStyle = '#166534';
+      tctx.fillRect(px(lane.x + 28), py(baseFrontY()), (lane.w - 56) * sx, Math.max(8, (lane.bottom - baseFrontY()) * sy));
+      (zombie && zombie.walls || []).forEach(w => {
+        if (!(w.hp > 0)) return;
+        tctx.strokeStyle = '#e7e5e4';
+        tctx.lineWidth = 2;
+        tctx.beginPath();
+        tctx.moveTo(px(w.x1), py(w.y1));
+        tctx.lineTo(px(w.x2), py(w.y2));
+        tctx.stroke();
+      });
+      (zombie && zombie.towers || []).forEach(t => {
+        if (!(t.hp > 0)) return;
+        tctx.fillStyle = '#fbbf24';
+        tctx.fillRect(px(t.x) - 3, py(t.y) - 3, 6, 6);
+      });
+      pveUnits.forEach(u => {
+        if (!u || u.hp <= 0) return;
+        tctx.fillStyle = '#84cc16';
+        tctx.fillRect(px(u.x) - 3, py(u.y) - 3, 6, 6);
+      });
+      Object.values(remotePlayers).forEach(rp => {
+        if (!(rp.hp > 0)) return;
+        tctx.fillStyle = rp.color || '#22c55e';
+        tctx.beginPath();
+        tctx.arc(px(rp.x), py(rp.y), 5, 0, Math.PI * 2);
+        tctx.fill();
+      });
+      if (localPlayer.hp > 0) {
+        tctx.fillStyle = '#38bdf8';
+        tctx.beginPath();
+        tctx.arc(px(localPlayer.x), py(localPlayer.y), 5, 0, Math.PI * 2);
+        tctx.fill();
+      }
+    }
+
     function initWorld() {
       if (!isHost) return;
       crates = []; pveUnits = [];
+      if (isZombies()) {
+        obstacles = [];
+        resetZombieRun();
+        renderStatTreeUI();
+        updateHUD();
+        return;
+      }
       if (isHost) {
         spawnObstacles();
         for (let i = 0; i < 1200; i += 4) {
@@ -3786,6 +5327,15 @@
     }
 
     function unitKillXP(type) {
+      if (type === 'ZOMBIE_JUGGERNAUT') return 140;
+      if (type === 'ZOMBIE_BRUTE') return 90;
+      if (type === 'ZOMBIE_BLOATER') return 70;
+      if (type === 'ZOMBIE_LEAPER') return 65;
+      if (type === 'ZOMBIE_SCREAMER') return 60;
+      if (type === 'ZOMBIE_SPITTER') return 55;
+      if (type === 'ZOMBIE_RUNNER') return 35;
+      if (type === 'ZOMBIE_CRAWLER') return 30;
+      if (type === 'ZOMBIE_WALKER') return 40;
       if (type === 'ATTACK_CHOPPER') return 200;
       if (type === 'SAM_TANK') return 100;
       if (type && type.includes('TANK')) return 50;
@@ -3793,6 +5343,7 @@
     }
 
     function addXP(amount) {
+      if (isZombies()) return;
       localPlayer.xp += amount; localPlayer.score += amount;
       while (localPlayer.xp >= localPlayer.xpToNext) {
         localPlayer.xp -= localPlayer.xpToNext;
@@ -3815,8 +5366,20 @@
     }
 
     function triggerDeath() {
+      if (isZombies()) {
+        downPilot();
+        return;
+      }
       gameState = 'DEAD';
       dropMissilesOn(localPlayer.id);
+      const title = document.getElementById('deathTitle');
+      const subtitle = document.getElementById('deathSubtitle');
+      const bestRow = document.getElementById('finalBestRow');
+      const button = document.getElementById('respawnBtn');
+      if (title) title.textContent = 'CHOPPER DOWN';
+      if (subtitle) subtitle.textContent = 'YOUR HELICOPTER WAS DESTROYED';
+      if (bestRow) bestRow.style.display = 'none';
+      if (button) button.textContent = 'RESPAWN';
       document.getElementById('finalScore').innerText = localPlayer.score;
       document.getElementById('finalLevel').innerText = localPlayer.level;
       showModal('deathOverlay');
@@ -3825,9 +5388,10 @@
 
     function updateHUD() {
       const clsName = localPlayer.heliModel ? ` [${heliModelName(localPlayer.heliModel)}]` : (localPlayer.playerClass ? ` [${localPlayer.playerClass}]` : '');
-      document.getElementById('hudLevel').innerText = `LVL ${localPlayer.level} APACHE${clsName}`;
-      document.getElementById('hudXP').innerText = `${Math.floor(localPlayer.xp)} / ${localPlayer.xpToNext} XP`;
-      document.getElementById('xpBarFill').style.width = `${Math.min(100, (localPlayer.xp / localPlayer.xpToNext) * 100)}%`;
+      document.getElementById('hudLevel').innerText = isZombies() ? 'ZOMBIE DEFENSE' : `LVL ${localPlayer.level} APACHE${clsName}`;
+      const placing = !towerPick ? null : (towerPick === 'WALL' ? { name: wallAnchor ? 'WALL END' : 'WALL $10' } : towerDef(towerPick));
+      document.getElementById('hudXP').innerText = isZombies() ? (placing ? ('PLACING ' + placing.name) : 'HELI GUN') : `${Math.floor(localPlayer.xp)} / ${localPlayer.xpToNext} XP`;
+      document.getElementById('xpBarFill').style.width = isZombies() ? '0%' : `${Math.min(100, (localPlayer.xp / localPlayer.xpToNext) * 100)}%`;
       const maxHp = getStatVal('maxHp');
       document.getElementById('hudHP').innerText = `${Math.max(0, Math.ceil(localPlayer.hp))} / ${maxHp}`;
       document.getElementById('hpBarFill').style.width = `${Math.max(0, (localPlayer.hp / maxHp) * 100)}%`;
@@ -3841,6 +5405,7 @@
       document.getElementById('hudRockets').innerText = localPlayer.rockets;
       document.getElementById('hudFlares').innerText = localPlayer.flares;
       document.getElementById('hudScore').innerText = localPlayer.score;
+      refreshZombieHud();
       refreshPowerHud();
       const droneRow = document.getElementById('hudDroneModeRow');
       const droneLabel = document.getElementById('hudDroneMode');
@@ -3888,7 +5453,15 @@
     function refreshPowerHud() {
       const row = document.getElementById('hudPowerRow');
       const el = document.getElementById('hudPower');
+      const loadout = document.getElementById('hudLoadout');
+      if (loadout) loadout.classList.toggle('hidden', isZombies());
       if (!row || !el) return;
+      if (isZombies()) {
+        row.classList.add('hidden');
+        const row2 = document.getElementById('hudPower2Row');
+        if (row2) row2.classList.add('hidden');
+        return;
+      }
       if (!localPlayer.power) {
         row.classList.add('hidden');
         return;
@@ -4171,7 +5744,8 @@
           pveUnits.forEach(u => {
             if (u.hp > 0 && pointInLaser(laser, u.x, u.y, u.radius * 0.6)) {
               u.hp -= dmg;
-              if (u.hp <= 0 && laser.ownerId === localPlayer.id) {
+              if (u.hp <= 0 && isZombies()) payZombieKill(u);
+              else if (u.hp <= 0 && laser.ownerId === localPlayer.id) {
                 const xp = unitKillXP(u.type);
                 addXP(xp);
                 floatingTexts.push({ x: u.x, y: u.y, text: '+' + xp, color: '#22c55e', life: 40 });
@@ -4183,13 +5757,13 @@
             const packet = 100 * laser.netAcc / 60;
             laser.netAcc = 0;
             Object.values(remotePlayers).forEach(rp => {
-              if (rp.hp > 0 && pointInLaser(laser, rp.x, rp.y, 18)) {
+              if (!isZombies() && rp.hp > 0 && pointInLaser(laser, rp.x, rp.y, 18)) {
                 broadcast({ type: 'HIT', targetId: rp.id, damage: packet, shooterId: laser.ownerId, weapon: 'LASER' });
               }
             });
           }
         }
-        if (!isGodMode && isHost && !(localPlayer.spawnGuard > 0) && localPlayer.hp > 0 && pointInLaser(laser, localPlayer.x, localPlayer.y, 18)) {
+        if (!isZombies() && !isGodMode && isHost && !(localPlayer.spawnGuard > 0) && localPlayer.hp > 0 && pointInLaser(laser, localPlayer.x, localPlayer.y, 18)) {
           const wasAlive = localPlayer.hp > 0;
           applyHullDamage(dmg);
           if (wasAlive && localPlayer.hp <= 0 && gameState === 'PLAYING') {
@@ -4266,7 +5840,8 @@
         pveUnits.forEach(u => {
           if (u.hp > 0 && inside(u.x, u.y, u.radius * 0.6)) {
             u.hp -= dmg;
-            if (u.hp <= 0 && blitz.ownerId === localPlayer.id) {
+            if (u.hp <= 0 && isZombies()) payZombieKill(u);
+            else if (u.hp <= 0 && blitz.ownerId === localPlayer.id) {
               const xp = unitKillXP(u.type);
               addXP(xp);
               floatingTexts.push({ x: u.x, y: u.y, text: '+' + xp, color: '#22c55e', life: 40 });
@@ -4278,12 +5853,12 @@
           const packet = 100 * blitz.netAcc / 60;
           blitz.netAcc = 0;
           Object.values(remotePlayers).forEach(rp => {
-            if (rp.id !== blitz.ownerId && rp.hp > 0 && inside(rp.x, rp.y, 18)) {
+            if (!isZombies() && rp.id !== blitz.ownerId && rp.hp > 0 && inside(rp.x, rp.y, 18)) {
               broadcast({ type: 'HIT', targetId: rp.id, damage: packet, shooterId: blitz.ownerId, weapon: 'BLITZ' });
             }
           });
         }
-        if (!isGodMode && !(localPlayer.spawnGuard > 0) && localPlayer.hp > 0 && localPlayer.id !== blitz.ownerId && inside(localPlayer.x, localPlayer.y, 18)) {
+        if (!isZombies() && !isGodMode && !(localPlayer.spawnGuard > 0) && localPlayer.hp > 0 && localPlayer.id !== blitz.ownerId && inside(localPlayer.x, localPlayer.y, 18)) {
           const wasAlive = localPlayer.hp > 0;
           applyHullDamage(dmg);
           if (wasAlive && localPlayer.hp <= 0 && gameState === 'PLAYING') {
@@ -4780,6 +6355,7 @@
 
     function damageStealthTarget(ent, damage, ownerId) {
       if (!ent || ent.hp <= 0 || damage <= 0) return;
+      if (isZombies() && (ent.id === localPlayer.id || remotePlayers[ent.id])) return;
       if (ent.id === localPlayer.id) {
         if (isGodMode || localPlayer.spawnGuard > 0) return;
         const wasAlive = localPlayer.hp > 0;
@@ -4794,7 +6370,8 @@
       }
       if (remotePlayers[ent.id]) return;
       ent.hp -= damage;
-      if (ent.hp <= 0 && ownerId === localPlayer.id) {
+      if (ent.hp <= 0 && isZombies()) payZombieKill(ent);
+      else if (ent.hp <= 0 && ownerId === localPlayer.id) {
         const xp = ent.type ? unitKillXP(ent.type) : 0;
         if (xp) {
           addXP(xp);
@@ -4822,7 +6399,8 @@
         pveUnits.forEach(u => {
           if (Math.hypot(x - u.x, y - u.y) < radius + u.radius) {
             u.hp -= damage;
-            if (u.hp <= 0 && ownerId === localPlayer.id) {
+            if (u.hp <= 0 && isZombies()) payZombieKill(u);
+            else if (u.hp <= 0 && ownerId === localPlayer.id) {
                 const xp = unitKillXP(u.type); addXP(xp);
                 floatingTexts.push({ x: u.x, y: u.y, text: '+' + xp, color: '#22c55e', life: 40 });
             }
@@ -4833,7 +6411,7 @@
             if (d.hp > 0 && Math.hypot(x - d.x, y - d.y) < radius + d.radius) d.hp -= damage;
           });
         }
-        if (Math.hypot(x - localPlayer.x, y - localPlayer.y) < radius + 28) {
+        if (!(isZombies() && (ownerId === localPlayer.id || remotePlayers[ownerId])) && Math.hypot(x - localPlayer.x, y - localPlayer.y) < radius + 28) {
           if (!isGodMode && !(localPlayer.spawnGuard > 0)) {
             const pWasAlive = localPlayer.hp > 0;
             applyHullDamage(damage * 0.6); updateHUD();
@@ -4980,12 +6558,15 @@
         const moveMag = Math.hypot(moveX, moveY);
         if (moveMag > 1) { moveX /= moveMag; moveY /= moveMag; }
 
-        localPlayer.vx += moveX * accel * dt; localPlayer.vy += moveY * accel * dt;
+        if (localPlayer.hp > 0) {
+          localPlayer.vx += moveX * accel * dt; localPlayer.vy += moveY * accel * dt;
+        }
         localPlayer.vx *= Math.pow(cloaked ? 0.948 : 0.92, dt); localPlayer.vy *= Math.pow(cloaked ? 0.948 : 0.92, dt);
         localPlayer.x += localPlayer.vx * dt; localPlayer.y += localPlayer.vy * dt;
 
-        localPlayer.x = Math.max(BORDER_MARGIN, Math.min(WORLD_SIZE - BORDER_MARGIN, localPlayer.x));
-        localPlayer.y = Math.max(BORDER_MARGIN, Math.min(WORLD_SIZE - BORDER_MARGIN, localPlayer.y));
+        const bounds = playBounds();
+        localPlayer.x = Math.max(bounds.left, Math.min(bounds.right, localPlayer.x));
+        localPlayer.y = Math.max(bounds.top, Math.min(bounds.bottom, localPlayer.y));
         pushOutOfObstacles(localPlayer, 32);
 
         mouse.worldX = (mouse.screenX - canvas.width / 2) / currentZoom + camera.x;
@@ -5010,12 +6591,12 @@
           localPlayer.attackDroneCooldown = Math.max(0, localPlayer.attackDroneCooldown - dt);
           if (Math.ceil(localPlayer.attackDroneCooldown / 60) !== before) updateHUD();
         }
-        if (isInputHeld(binds.gun) && !document.querySelector('.modal-overlay.active') && localPlayer.heliModel !== 'ATTACK_DRONES') {
+        if (localPlayer.hp > 0 && (!isZombies() || !towerPick) && isInputHeld(binds.gun) && !document.querySelector('.modal-overlay.active') && localPlayer.heliModel !== 'ATTACK_DRONES') {
           fireMachineGun();
         }
 
         const heavyTurrets = (localPlayer.playerClass === 'GUNSHIP' && !localPlayer.heliModel) || localPlayer.heliModel === 'STEALTH_GUNSHIP';
-        if (heavyTurrets && !localPlayer.weaponsHold && !offenseLocked()) {
+        if (!isZombies() && localPlayer.hp > 0 && heavyTurrets && !localPlayer.weaponsHold && !offenseLocked()) {
           localPlayer.sideFireCooldown = (localPlayer.sideFireCooldown || 0) - dt;
           if (localPlayer.sideFireCooldown <= 0) {
             const leftBaseAngle = localPlayer.angle - Math.PI / 2;
@@ -5038,7 +6619,7 @@
           }
         }
 
-        if (localPlayer.heliModel === 'GATLING_GUNSHIP' && !localPlayer.weaponsHold && !offenseLocked()) {
+        if (!isZombies() && localPlayer.hp > 0 && localPlayer.heliModel === 'GATLING_GUNSHIP' && !localPlayer.weaponsHold && !offenseLocked()) {
           localPlayer.sideFireCooldown = (localPlayer.sideFireCooldown || 0) - dt;
           if (localPlayer.sideFireCooldown <= 0) {
             const leftBaseAngle = localPlayer.angle - Math.PI / 2;
@@ -5055,7 +6636,7 @@
           }
         }
 
-        if (localPlayer.heliModel === 'ATTACK_GUNSHIP' && localPlayer.rockets > 0 && !localPlayer.weaponsHold && !offenseLocked()) {
+        if (!isZombies() && localPlayer.hp > 0 && localPlayer.heliModel === 'ATTACK_GUNSHIP' && localPlayer.rockets > 0 && !localPlayer.weaponsHold && !offenseLocked()) {
           const tryPod = (side) => {
             const key = side < 0 ? 'sideMissileL' : 'sideMissileR';
             if ((localPlayer[key] || 0) > 0 || localPlayer.rockets <= 0) return;
@@ -5084,8 +6665,19 @@
           if (localPlayer.flareTimer >= getStatVal('flareReload')) { localPlayer.flares++; localPlayer.flareTimer = 0; updateHUD(); }
         }
         if (localPlayer.regenDelay > 0) localPlayer.regenDelay -= dt;
-        else if (localPlayer.hp < getStatVal('maxHp')) {
+        else if (localPlayer.hp > 0 && localPlayer.hp < getStatVal('maxHp')) {
           localPlayer.hp = Math.min(getStatVal('maxHp'), localPlayer.hp + getStatVal('hpRegen') * dt); updateHUD();
+        }
+        if (isZombies() && localPlayer.hp > 0 && localPlayer.infection > 0) {
+          localPlayer.infection -= dt;
+          localPlayer.infectTick = (localPlayer.infectTick || 0) + dt;
+          if (localPlayer.infectTick > 40) {
+            localPlayer.infectTick = 0;
+            applyHullDamage(4);
+            updateHUD();
+            if (localPlayer.hp <= 0) downPilot();
+          }
+          if (localPlayer.infection <= 0) refreshZombieHud();
         }
 
         if (isGodMode) {
@@ -5100,7 +6692,7 @@
           if (isOnlineMatch()) {
             sendPose();
             if (isHost) {
-              broadcast({ type: 'SYNC_PVE', pveUnits });
+              broadcast({ type: 'SYNC_PVE', pveUnits, zombie: zombiePublic() });
             }
           }
         }
@@ -5139,7 +6731,7 @@
         let hit = false;
         
         Object.values(remotePlayers).forEach(rp => {
-            if (!hit && b.ownerId !== rp.id && rp.hp > 0 && Math.hypot(b.x - rp.x, b.y - rp.y) < 26) {
+            if (!hit && !isZombies() && b.ownerId !== rp.id && rp.hp > 0 && Math.hypot(b.x - rp.x, b.y - rp.y) < 26) {
                 hit = true;
             }
         });
@@ -5159,7 +6751,8 @@
         pveUnits.forEach(u => {
           if (!hit && b.ownerId !== u.id && Math.hypot(b.x - u.x, b.y - u.y) < u.radius) {
             u.hp -= b.damage * (u.type.includes('TANK') ? 0.25 : 1.0); hit = true;
-            if (u.hp <= 0 && b.ownerId === localPlayer.id) {
+            if (u.hp <= 0 && isZombies()) payZombieKill(u);
+            else if (u.hp <= 0 && b.ownerId === localPlayer.id) {
                 const xp = unitKillXP(u.type); addXP(xp);
                 floatingTexts.push({ x: u.x, y: u.y, text: '+' + xp, color: '#22c55e', life: 40 });
             }
@@ -5171,7 +6764,7 @@
             hit = true;
           }
         });
-        if (b.ownerId !== localPlayer.id && Math.hypot(b.x - localPlayer.x, b.y - localPlayer.y) < 26) {
+        if (!isZombies() && b.ownerId !== localPlayer.id && Math.hypot(b.x - localPlayer.x, b.y - localPlayer.y) < 26) {
           hit = true;
           if (!isGodMode && !(localPlayer.spawnGuard > 0)) {
             const pWasAlive = localPlayer.hp > 0;
@@ -5315,9 +6908,9 @@
             drones.forEach(d => { if (m.ownerId !== localPlayer.id && d.hp > 0 && Math.hypot(d.x - m.x, d.y - m.y) < d.radius + 12) targetHit = true; });
             crates.forEach(c => { if (Math.hypot(c.x - m.x, c.y - m.y) < c.size + 10) targetHit = true; });
             Object.values(remotePlayers).forEach(rp => {
-              if (rp.id !== m.ownerId && distToSegment(rp.x, rp.y, prevX, prevY, m.x, m.y) < 30) targetHit = true;
+              if (!isZombies() && rp.id !== m.ownerId && distToSegment(rp.x, rp.y, prevX, prevY, m.x, m.y) < 30) targetHit = true;
             });
-            if (m.ownerId !== localPlayer.id && distToSegment(localPlayer.x, localPlayer.y, prevX, prevY, m.x, m.y) < 30) targetHit = true;
+            if (!isZombies() && m.ownerId !== localPlayer.id && distToSegment(localPlayer.x, localPlayer.y, prevX, prevY, m.x, m.y) < 30) targetHit = true;
           }
         }
 
@@ -5385,12 +6978,19 @@
       // Host AI & World Logic (Continuous execution)
       crates = crates.filter(c => c.hp > 0);
       pveUnits = pveUnits.filter(u => {
-        if (u.hp <= 0) createExplosion(u.x, u.y, 40);
+        if (u.hp <= 0) {
+          if (u.type === 'ZOMBIE_BLOATER') burstBloater(u);
+          else createExplosion(u.x, u.y, 40);
+        }
         return u.hp > 0;
       });
 
       if (isHost) {
         pveUnits.forEach(u => {
+          if (u.type && u.type.startsWith('ZOMBIE')) {
+            stepZombie(u, dt);
+            return;
+          }
           let target = null;
           let minDist = Infinity;
           if (localPlayer.hp > 0 && !(localPlayer.cloak > 0)) {
@@ -5533,10 +7133,11 @@
           pushOutOfObstacles(u, (u.radius || 24) + 8);
         });
 
-        if (pveUnits.length < 32 && Math.random() < 0.008 * dt) spawnPvEUnit();
+        if (isZombies()) updateZombieDirector(dt);
+        else if (pveUnits.length < 32 && Math.random() < 0.008 * dt) spawnPvEUnit();
         
         // Dynamic Crate Spawning (Sends only newly spawned crate clumps)
-        if (crates.length < 1200 && Math.random() < 0.45 * dt) {
+        if (!isZombies() && crates.length < 1200 && Math.random() < 0.45 * dt) {
              const activeTargets = [localPlayer, ...Object.values(remotePlayers)].filter(p => p.hp > 0);
              if (activeTargets.length > 0) {
                 const pTarget = activeTargets[Math.floor(Math.random() * activeTargets.length)];
@@ -5652,6 +7253,10 @@
     }
 
     function drawWorldTerrain() {
+      if (isZombies()) {
+        drawZombieCorridor();
+        return;
+      }
       const viewW = canvas.width / currentZoom;
       const viewH = canvas.height / currentZoom;
       const pad = 180;
@@ -5896,10 +7501,11 @@
       ctx.fill();
 
       const heavy = c.kind === 'HEAVY';
-      const wood = heavy ? '#a16207' : '#6b4423';
-      const plankLight = heavy ? '#fbbf24' : '#c4894a';
-      const plankMid = heavy ? '#d97706' : '#8a5a2a';
-      const plankDark = heavy ? '#92400e' : '#6d4524';
+      const scavenge = c.kind === 'SCAVENGE';
+      const wood = scavenge ? '#365314' : (heavy ? '#a16207' : '#6b4423');
+      const plankLight = scavenge ? '#bef264' : (heavy ? '#fbbf24' : '#c4894a');
+      const plankMid = scavenge ? '#65a30d' : (heavy ? '#d97706' : '#8a5a2a');
+      const plankDark = scavenge ? '#3f6212' : (heavy ? '#92400e' : '#6d4524');
       ctx.fillStyle = wood;
       ctx.fillRect(-s / 2, -s / 2, s, s);
       const plank = ctx.createLinearGradient(-s / 2, 0, s / 2, 0);
@@ -6198,14 +7804,15 @@
 
     function drawGroundVehicle(u) {
       const sam = u.type === 'SAM_TANK';
+      const zed = u.type && u.type.startsWith('ZOMBIE');
       ctx.save();
       ctx.translate(u.x, u.y);
       ctx.rotate(u.hullAngle !== undefined ? u.hullAngle : u.angle);
       ctx.fillStyle = 'rgba(0,0,0,0.35)';
       ctx.beginPath(); ctx.ellipse(2, 8, 24, 14, 0, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = sam ? '#3f1212' : '#1e293b';
+      ctx.fillStyle = zed ? '#14532d' : (sam ? '#3f1212' : '#1e293b');
       ctx.fillRect(-22, -16, 44, 32);
-      ctx.fillStyle = sam ? '#7f1d1d' : '#475569';
+      ctx.fillStyle = zed ? '#65a30d' : (sam ? '#7f1d1d' : '#475569');
       ctx.fillRect(-16, -11, 32, 22);
       ctx.fillStyle = '#0f172a';
       ctx.fillRect(-20, -16, 40, 5);
@@ -6634,6 +8241,10 @@
 
     function drawTacticalMap() {
       if (!tctx || !tacticalCanvas || !isTacticalMapOpen) return;
+      if (isZombies()) {
+        drawZombieTactical();
+        return;
+      }
       const w = tacticalCanvas.width;
       const h = tacticalCanvas.height;
 
@@ -6852,16 +8463,19 @@
 
       // PvE Units
       pveUnits.forEach(u => {
-        if (u.type === 'TANK' || u.type === 'SAM_TANK') {
+        if (u.type && u.type.startsWith('ZOMBIE')) {
+          drawZombieFigure(u);
+        } else if (u.type === 'TANK' || u.type === 'SAM_TANK') {
           drawGroundVehicle(u);
         } else if (u.type === 'ATTACK_CHOPPER') {
           drawSAMChopper(u);
         } else {
           drawApache(u, true);
         }
-        const displayName = u.type === 'ATTACK_CHOPPER' ? 'ATTACK HELI' : (u.type === 'CHOPPER' ? 'CHOPPER' : u.type);
+        const displayName = (u.type && u.type.startsWith('ZOMBIE')) ? zombieName(u.type) : (u.type === 'ATTACK_CHOPPER' ? 'ATTACK HELI' : (u.type === 'CHOPPER' ? 'CHOPPER' : u.type));
         drawHealthBar(u.x, u.y, u.hp, u.maxHp, false, displayName);
       });
+      if (isZombies()) drawTowers();
 
       // Players
       drones.forEach(d => {
@@ -7015,6 +8629,8 @@
       ctx.restore();
 
       // Minimap Radar
+      if (isZombies()) drawZombieMinimap();
+      else {
       mctx.clearRect(0, 0, 140, 140);
       mctx.fillStyle = '#1c2a1c';
       mctx.fillRect(0, 0, 140, 140);
@@ -7094,6 +8710,7 @@
         mctx.strokeStyle = '#e9d5ff'; mctx.lineWidth = 1;
         mctx.beginPath(); mctx.arc(r.x * mapScale, r.y * mapScale, 6, 0, Math.PI * 2); mctx.stroke();
       });
+      }
 
       if (isTacticalMapOpen) drawTacticalMap();
     }
@@ -7141,7 +8758,7 @@
       document.getElementById('feedbackSendBtn').addEventListener('click', (e) => { e.preventDefault(); sendFeedback(); });
       document.getElementById('modeSingleBtn').addEventListener('click', (e) => { e.preventDefault(); selectMode('SINGLE'); });
       document.getElementById('modeMultiBtn').addEventListener('click', (e) => { e.preventDefault(); selectMode('MULTI'); });
-      document.getElementById('respawnBtn').addEventListener('click', (e) => { e.preventDefault(); respawnPlayer(); });
+      document.getElementById('respawnBtn').addEventListener('click', (e) => { e.preventDefault(); if (isZombies()) restartZombieRun(); else respawnPlayer(); });
       document.getElementById('resumeBtn').addEventListener('click', (e) => { e.preventDefault(); resumeGame(); });
       document.getElementById('openSettingsBtn').addEventListener('click', (e) => { e.preventDefault(); openSettings('pause'); });
       document.getElementById('exitGameBtn').addEventListener('click', (e) => { e.preventDefault(); exitToMenu(); });
