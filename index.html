@@ -1525,7 +1525,7 @@
     }
 
     const FEEDBACK_URL = 'https://ntfy.sh/apache-copter-feedback-tatum-4c91';
-    const GAME_VERSION = 3;
+    const GAME_VERSION = 4;
     const LIVE_URL = 'https://nightopsbravo.github.io/apache-copter/';
     let signedInName = '';
     let accountZombieBest = { wave: 0, score: 0 };
@@ -3804,16 +3804,16 @@
 
     function zombieBounty(type) {
       return ({
-        ZOMBIE_WALKER: { cash: 2, gems: 0.4 },
-        ZOMBIE_CRAWLER: { cash: 2, gems: 0.28 },
-        ZOMBIE_RUNNER: { cash: 3, gems: 0.45 },
-        ZOMBIE_SPITTER: { cash: 4, gems: 0.85 },
-        ZOMBIE_BRUTE: { cash: 8, gems: 1.8 },
-        ZOMBIE_BLOATER: { cash: 5, gems: 1.15 },
-        ZOMBIE_SCREAMER: { cash: 4, gems: 0.9 },
-        ZOMBIE_LEAPER: { cash: 5, gems: 1 },
-        ZOMBIE_JUGGERNAUT: { cash: 14, gems: 3.2 }
-      })[type] || { cash: 6, gems: 0 };
+        ZOMBIE_WALKER: { cash: 4, gems: 0.4 },
+        ZOMBIE_CRAWLER: { cash: 4, gems: 0.28 },
+        ZOMBIE_RUNNER: { cash: 6, gems: 0.45 },
+        ZOMBIE_SPITTER: { cash: 8, gems: 0.85 },
+        ZOMBIE_BRUTE: { cash: 16, gems: 1.8 },
+        ZOMBIE_BLOATER: { cash: 10, gems: 1.15 },
+        ZOMBIE_SCREAMER: { cash: 8, gems: 0.9 },
+        ZOMBIE_LEAPER: { cash: 10, gems: 1 },
+        ZOMBIE_JUGGERNAUT: { cash: 28, gems: 3.2 }
+      })[type] || { cash: 12, gems: 0 };
     }
 
     const ZOMBIE_START_CASH = 80;
@@ -3975,8 +3975,8 @@
 
     function stallAt(x, y) {
       const lane = zombieLane();
-      const top = baseFrontY() + 14;
-      const bottom = Math.min(lane.bottom - 8, top + 108);
+      const top = baseFrontY() + 18;
+      const bottom = baseFrontY() + 92;
       if (y < top || y > bottom || x < lane.x || x > lane.right) return null;
       const items = shopItems();
       const slotW = lane.w / items.length;
@@ -3991,7 +3991,11 @@
         return;
       }
       const id = stallAt(localPlayer.x, localPlayer.y);
-      if (!id || playerOwns(localPlayer.id, id)) return;
+      if (!id) {
+        localPlayer.shopClear = true;
+        return;
+      }
+      if (!localPlayer.shopClear || playerOwns(localPlayer.id, id)) return;
       localPlayer.shopTouch = 45;
       buyTowerFromShop(id);
     }
@@ -4663,9 +4667,18 @@
     }
 
     function zombieSpawnSlot(slot) {
-      const bounds = playBounds();
-      const mid = (bounds.left + bounds.right) / 2;
-      return { x: mid + (slot - 1) * 90, y: zombieLane().bottom - 20 };
+      const lane = zombieLane();
+      const mid = (lane.x + lane.right) / 2;
+      return { x: mid + (slot - 1) * 70, y: lane.bottom - 22 };
+    }
+
+    function parkAtSpawn(spot) {
+      localPlayer.x = spot.x;
+      localPlayer.y = spot.y;
+      localPlayer.vx = 0;
+      localPlayer.vy = 0;
+      localPlayer.shopTouch = 60;
+      localPlayer.shopClear = false;
     }
 
     function zombiePublic() {
@@ -4734,7 +4747,7 @@
         const calls = ['CONTACT NORTH', 'THEY BROKE THE TREE LINE', 'HOLD THE WIRE', 'STAY AIRBORNE', 'DO NOT LET THEM IN'];
         floatingTexts.push({ x: localPlayer.x, y: localPlayer.y - 48, text: 'NIGHT ' + zombie.wave + ' · ' + calls[zombie.wave % calls.length], color: '#bef264', life: 90 });
         reviveDownedPilot();
-        if (isHost) grantZombiePay(3 + zombie.wave, 1 + (zombie.wave % 2 === 0 ? 1 : 0), localPlayer.x, localPlayer.y - 24);
+        if (isHost) grantZombiePay((3 + zombie.wave) * 2, 1 + (zombie.wave % 2 === 0 ? 1 : 0), localPlayer.x, localPlayer.y - 24);
       }
       refreshZombieHud();
     }
@@ -4796,10 +4809,7 @@
       const spot = zombieSpawnSlot(isHost ? 0 : 1);
       localPlayer.hp = getStatVal('maxHp');
       localPlayer.infection = 0;
-      localPlayer.x = spot.x;
-      localPlayer.y = spot.y;
-      localPlayer.vx = 0;
-      localPlayer.vy = 0;
+      parkAtSpawn(spot);
       floatingTexts.push({ x: spot.x, y: spot.y - 30, text: 'BACK IN THE FIGHT', color: '#86efac', life: 70 });
       updateHUD();
       if (isOnlineMatch()) sendPose();
@@ -4888,10 +4898,7 @@
 
     function placeLocalAtBase() {
       const spot = zombieSpawnSlot(isHost ? 0 : 1 + Object.keys(remotePlayers).length);
-      localPlayer.x = spot.x;
-      localPlayer.y = spot.y;
-      localPlayer.vx = 0;
-      localPlayer.vy = 0;
+      parkAtSpawn(spot);
       camera.x = spot.x;
       camera.y = spot.y;
     }
@@ -5284,31 +5291,32 @@
         ctx.fillRect(x + 8, baseFrontY() + 16, 16, 7);
       }
       ctx.fillStyle = '#0f172a';
-      ctx.fillRect(lane.x + lane.w / 2 - 70, lane.bottom - 28, 140, 16);
+      ctx.fillRect(lane.x + 24, lane.bottom - 36, lane.w - 48, 20);
       const ratio = zombie ? Math.max(0, zombie.baseHp / zombie.baseMax) : 1;
       ctx.fillStyle = '#65a30d';
       ctx.fillRect(lane.x, baseFrontY(), lane.w * ratio, 8);
       ctx.fillStyle = '#ecfccb';
-      ctx.font = 'bold 16px Orbitron';
+      ctx.font = 'bold 14px Orbitron';
       ctx.textAlign = 'center';
-      ctx.fillText('SHOP — BUY TOWERS WITH GEMS', (lane.x + lane.right) / 2, lane.bottom - 18);
+      ctx.fillText('SHOP — BUY TOWERS WITH GEMS', (lane.x + lane.right) / 2, baseFrontY() + 16);
       const items = shopItems();
       const slotW = lane.w / items.length;
+      const cardTop = baseFrontY() + 22;
       ctx.font = 'bold 9px Orbitron';
       items.forEach((def, i) => {
         const x = lane.x + slotW * i;
         const owned = playerOwns(localPlayer.id, def.id);
         const picked = towerPick === def.id;
         ctx.fillStyle = picked ? 'rgba(250, 204, 21, 0.38)' : (owned ? 'rgba(22, 101, 52, 0.62)' : 'rgba(28, 25, 23, 0.78)');
-        ctx.fillRect(x + 3, baseFrontY() + 16, slotW - 6, 104);
+        ctx.fillRect(x + 3, cardTop, slotW - 6, 68);
         ctx.fillStyle = def.color;
-        ctx.fillRect(x + slotW / 2 - 7, baseFrontY() + 28, 14, 14);
+        ctx.fillRect(x + slotW / 2 - 7, cardTop + 8, 14, 14);
         ctx.fillStyle = '#f8fafc';
-        ctx.fillText(def.name, x + slotW / 2, baseFrontY() + 58);
+        ctx.fillText(def.name, x + slotW / 2, cardTop + 34);
         ctx.fillStyle = owned ? '#86efac' : '#fde68a';
-        ctx.fillText(owned ? (def.id === 'WIRE' ? ('PLACE $' + WIRE_PLACE) : 'OWNED') : ('BUY ◆' + def.gems), x + slotW / 2, baseFrontY() + 74);
+        ctx.fillText(owned ? (def.id === 'WIRE' ? ('PLACE $' + WIRE_PLACE) : 'OWNED') : ('BUY ◆' + def.gems), x + slotW / 2, cardTop + 48);
         ctx.fillStyle = '#cbd5e1';
-        ctx.fillText(owned ? 'CLICK' : 'FLY OR CLICK', x + slotW / 2, baseFrontY() + 90);
+        ctx.fillText(owned ? 'CLICK' : 'FLY OR CLICK', x + slotW / 2, cardTop + 60);
       });
       ctx.strokeStyle = 'rgba(234, 179, 8, 0.45)';
       ctx.lineWidth = 4;
