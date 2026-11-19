@@ -119,6 +119,19 @@
     </div>
   </div>
 
+  <div id="tutorialOverlay" class="modal-overlay fixed inset-0 z-[1250] items-center justify-center bg-black/75 backdrop-blur-sm p-4">
+    <div id="tutorialCard" class="hud-glass p-6 rounded-2xl max-w-md w-full border-2 border-emerald-500/60 shadow-2xl relative z-[1251]">
+      <p id="tutorialKicker" class="text-[10px] font-black tracking-widest text-emerald-300/80 mb-1">BRIEFING</p>
+      <h2 id="tutorialTitle" class="text-2xl font-black text-emerald-400 tracking-widest mb-1">SINGLEPLAYER</h2>
+      <p id="tutorialStep" class="text-[10px] text-emerald-200/70 mb-4">1 / 3</p>
+      <p id="tutorialBody" class="text-sm text-emerald-50 leading-relaxed min-h-[7.5rem]"></p>
+      <div class="mt-6 flex gap-2">
+        <button id="tutorialSkipBtn" type="button" class="flex-1 py-3 bg-black/60 hover:bg-emerald-950 text-emerald-200 font-black text-sm rounded-xl border border-emerald-500/40 cursor-pointer">SKIP</button>
+        <button id="tutorialNextBtn" type="button" class="flex-1 py-3 bg-emerald-500 hover:bg-emerald-400 text-black font-black text-sm rounded-xl cursor-pointer">NEXT</button>
+      </div>
+    </div>
+  </div>
+
   <!-- SHARED FEEDBACK BOARD -->
   <div id="feedbackOverlay" class="modal-overlay fixed inset-0 z-[1400] items-center justify-center bg-black/80 backdrop-blur-md p-4">
     <div class="hud-glass p-6 rounded-2xl max-w-lg w-full border-2 border-amber-500/60 shadow-2xl relative z-[1401] flex flex-col max-h-[90vh]">
@@ -988,7 +1001,7 @@
        ======================================================================== */
     class AudioEngine {
       constructor() {
-        this.ctx = null; this.muted = false; this.master = null; this.rotorGain = null; this.noise = null;
+        this.ctx = null; this.muted = false; this.master = null; this.rotorGain = null; this.rotorRate = null; this.turbine = null; this.noise = null;
         try { this.muted = localStorage.getItem('apacheCopterMuted') === '1'; } catch (err) {}
       }
       init() {
@@ -1014,32 +1027,93 @@
         this.noise = buffer;
 
         const now = this.ctx.currentTime;
-        const body = this.ctx.createOscillator();
-        const blades = this.ctx.createOscillator();
-        const slap = this.ctx.createOscillator();
-        const slapDepth = this.ctx.createGain();
-        const filter = this.ctx.createBiquadFilter();
+        const low = this.ctx.createOscillator();
+        const knock = this.ctx.createOscillator();
+        const body = this.ctx.createGain();
+        const clip = this.ctx.createWaveShaper();
+        const wash = this.ctx.createBufferSource();
+        const washFilter = this.ctx.createBiquadFilter();
+        const washGain = this.ctx.createGain();
+        const blade = this.ctx.createOscillator();
+        const bladeShape = this.ctx.createWaveShaper();
+        const slap = this.ctx.createGain();
+        const roar = this.ctx.createBufferSource();
+        const roarFilter = this.ctx.createBiquadFilter();
+        const roarGain = this.ctx.createGain();
+        const whineA = this.ctx.createOscillator();
+        const whineB = this.ctx.createOscillator();
+        const whineC = this.ctx.createOscillator();
+        const whineMix = this.ctx.createGain();
+        const whineFilter = this.ctx.createBiquadFilter();
+        const clipCurve = new Float32Array(256);
+        const bladeCurve = new Float32Array(256);
+        for (let i = 0; i < 256; i++) {
+          const x = (i / 255) * 2 - 1;
+          clipCurve[i] = Math.tanh(x * 2.4);
+          const hit = Math.max(0, (x - 0.2) / 0.8);
+          bladeCurve[i] = Math.pow(hit, 1.7);
+        }
+        clip.curve = clipCurve;
+        bladeShape.curve = bladeCurve;
         this.rotorGain = this.ctx.createGain();
-        body.type = 'sine';
-        body.frequency.setValueAtTime(36, now);
-        blades.type = 'triangle';
-        blades.frequency.setValueAtTime(22, now);
-        slap.type = 'sine';
-        slap.frequency.setValueAtTime(14.5, now);
-        slapDepth.gain.setValueAtTime(7, now);
-        slap.connect(slapDepth);
-        slapDepth.connect(blades.frequency);
-        filter.type = 'lowpass';
-        filter.frequency.setValueAtTime(160, now);
-        filter.Q.setValueAtTime(0.7, now);
-        this.rotorGain.gain.setValueAtTime(0.2, now);
-        body.connect(filter);
-        blades.connect(filter);
-        filter.connect(this.rotorGain);
+        this.rotorRate = blade.frequency;
+        this.turbine = [whineA.frequency, whineB.frequency, whineC.frequency];
+        low.type = 'sine';
+        low.frequency.setValueAtTime(54, now);
+        knock.type = 'triangle';
+        knock.frequency.setValueAtTime(108, now);
+        body.gain.setValueAtTime(0.85, now);
+        wash.buffer = this.noise;
+        wash.loop = true;
+        washFilter.type = 'lowpass';
+        washFilter.frequency.setValueAtTime(180, now);
+        washFilter.Q.setValueAtTime(0.6, now);
+        washGain.gain.setValueAtTime(0.55, now);
+        blade.type = 'sine';
+        blade.frequency.setValueAtTime(10.5, now);
+        roar.buffer = this.noise;
+        roar.loop = true;
+        roarFilter.type = 'bandpass';
+        roarFilter.frequency.setValueAtTime(520, now);
+        roarFilter.Q.setValueAtTime(0.45, now);
+        roarGain.gain.setValueAtTime(0.16, now);
+        whineA.type = 'sawtooth';
+        whineB.type = 'sawtooth';
+        whineC.type = 'triangle';
+        whineA.frequency.setValueAtTime(740, now);
+        whineB.frequency.setValueAtTime(1110, now);
+        whineC.frequency.setValueAtTime(1680, now);
+        whineMix.gain.setValueAtTime(0.045, now);
+        whineFilter.type = 'highpass';
+        whineFilter.frequency.setValueAtTime(480, now);
+        this.rotorGain.gain.setValueAtTime(0, now);
+        low.connect(body);
+        knock.connect(body);
+        body.connect(clip);
+        clip.connect(slap);
+        wash.connect(washFilter);
+        washFilter.connect(washGain);
+        washGain.connect(slap);
+        blade.connect(bladeShape);
+        bladeShape.connect(slap.gain);
+        slap.connect(this.rotorGain);
+        roar.connect(roarFilter);
+        roarFilter.connect(roarGain);
+        roarGain.connect(this.rotorGain);
+        whineA.connect(whineMix);
+        whineB.connect(whineMix);
+        whineC.connect(whineMix);
+        whineMix.connect(whineFilter);
+        whineFilter.connect(this.rotorGain);
         this.rotorGain.connect(this.master);
-        body.start();
-        blades.start();
-        slap.start();
+        low.start();
+        knock.start();
+        wash.start();
+        blade.start();
+        roar.start();
+        whineA.start();
+        whineB.start();
+        whineC.start();
       }
       setMuted(muted) {
         this.muted = !!muted;
@@ -1531,9 +1605,13 @@
     let accountZombieBest = { wave: 0, score: 0 };
     let towerPick = 'GUN';
     let wallAnchor = null;
+    let selectedTowerId = null;
+    let towerFx = [];
     const WALL_REACH = 130;
     const WALL_COST = 10;
     const WALL_MAX = 12;
+    const TOWER_MAX = 50;
+    const TOWER_RANK_MAX = 3;
     const WIRE_BUY = 5;
     const WIRE_PLACE = 20;
     const WIRE_MAX = 6;
@@ -1601,20 +1679,87 @@
         else localStorage.removeItem('apacheCopterAccount');
       } catch (err) {}
       if (signedInName) applySavedColor(signedInName);
-      try {
-        const cached = JSON.parse(localStorage.getItem('apacheCopterZombieBest:' + accountKey(signedInName)) || 'null');
-        if (cached && Number(cached.wave) > 0) accountZombieBest = { wave: Number(cached.wave) || 0, score: Number(cached.score) || 0 };
-      } catch (err) { accountZombieBest = { wave: 0, score: 0 }; }
+      loadStoredZombieBest();
       refreshAccountUi();
     }
 
-    function takeZombieBest(board) {
-      const row = board && board.zombieBests && board.zombieBests[accountKey(signedInName)];
-      if (!row) return;
-      if (row.wave > accountZombieBest.wave || (row.wave === accountZombieBest.wave && row.score > accountZombieBest.score)) {
-        accountZombieBest = { wave: row.wave, score: row.score };
-        try { localStorage.setItem('apacheCopterZombieBest:' + accountKey(signedInName), JSON.stringify(accountZombieBest)); } catch (err) {}
+    function zombieBestRank(wave, score) {
+      return (Number(wave) || 0) * 100000000 + Math.max(0, Number(score) || 0);
+    }
+
+    function loadStoredZombieBest() {
+      accountZombieBest = { wave: 0, score: 0 };
+      if (!signedInName) return;
+      try {
+        const cached = JSON.parse(localStorage.getItem('apacheCopterZombieBest:' + accountKey(signedInName)) || 'null');
+        if (cached && Number(cached.wave) > 0) accountZombieBest = { wave: Number(cached.wave) || 0, score: Number(cached.score) || 0 };
+      } catch (err) {}
+      if (accountZombieBest.wave <= 0) {
+        try {
+          const wave = Number(localStorage.getItem('apacheCopterZombieWave') || 0);
+          const score = Number(localStorage.getItem('apacheCopterZombieBest') || 0);
+          if (wave > 0) accountZombieBest = { wave: wave, score: score };
+        } catch (err) {}
       }
+    }
+
+    function storedZombieBest() {
+      const current = { wave: accountZombieBest.wave || 0, score: accountZombieBest.score || 0 };
+      if (!signedInName) return current;
+      try {
+        const cached = JSON.parse(localStorage.getItem('apacheCopterZombieBest:' + accountKey(signedInName)) || 'null');
+        if (cached && zombieBestRank(cached.wave, cached.score) > zombieBestRank(current.wave, current.score)) {
+          return { wave: Number(cached.wave) || 0, score: Number(cached.score) || 0 };
+        }
+      } catch (err) {}
+      return current;
+    }
+
+    async function postZombieBest(best) {
+      if (!signedInName || !best || !(best.wave > 0)) return;
+      const payload = { op: 'zbest', name: signedInName, wave: best.wave, score: best.score || 0 };
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          await postFeedback(payload);
+          return;
+        } catch (err) {
+          await new Promise(resolve => setTimeout(resolve, 450 * (attempt + 1)));
+        }
+      }
+    }
+
+    function commitZombieBest(wave, score) {
+      if (!signedInName) return false;
+      wave = Math.max(0, Math.floor(Number(wave) || 0));
+      score = Math.max(0, Math.round(Number(score) || 0));
+      if (wave <= 0) return false;
+      const kept = storedZombieBest();
+      if (zombieBestRank(wave, score) <= zombieBestRank(kept.wave, kept.score)) {
+        accountZombieBest = kept;
+        return false;
+      }
+      accountZombieBest = { wave: wave, score: score };
+      try { localStorage.setItem('apacheCopterZombieBest:' + accountKey(signedInName), JSON.stringify(accountZombieBest)); } catch (err) {}
+      try {
+        localStorage.setItem('apacheCopterZombieBest', String(score));
+        localStorage.setItem('apacheCopterZombieWave', String(wave));
+      } catch (err) {}
+      postZombieBest(accountZombieBest);
+      if (zombie) {
+        zombie.bestWave = Math.max(zombie.bestWave || 1, wave);
+        zombie.bestScore = Math.max(zombie.bestScore || 0, score);
+      }
+      refreshZombieHud();
+      return true;
+    }
+
+    function takeZombieBest(board) {
+      if (!signedInName) return;
+      const kept = storedZombieBest();
+      accountZombieBest = kept;
+      const row = board && board.zombieBests && board.zombieBests[accountKey(signedInName)];
+      if (row && commitZombieBest(row.wave, row.score)) return;
+      if (zombieBestRank(kept.wave, kept.score) > zombieBestRank(row && row.wave, row && row.score)) postZombieBest(kept);
     }
 
     async function hashPassword(password, salt) {
@@ -1962,6 +2107,7 @@
       hideModal('powerSelectOverlay');
       hideModal('power2SelectOverlay');
       hideModal('tacticalMapOverlay');
+      hideModal('tutorialOverlay');
       const hud = document.getElementById('hud');
       if (hud) hud.classList.add('hidden');
       const statPanel = document.getElementById('statPanel');
@@ -2117,6 +2263,11 @@
           buyTowerFromShop(stallAt(mouse.worldX, mouse.worldY));
           return;
         }
+        const hitTower = towerAt(mouse.worldX, mouse.worldY);
+        if (hitTower) {
+          selectTower(hitTower.id);
+          return;
+        }
         if (towerPick) {
           requestPlace(mouse.worldX, mouse.worldY);
           return;
@@ -2162,6 +2313,7 @@
     });
 
     window.addEventListener('pagehide', () => {
+      if (isZombies() && zombie && signedInName) commitZombieBest(zombie.wave, Math.max(localPlayer.score || 0, (zombie.earned && zombie.earned[localPlayer.id]) || 0));
       if (gameState === 'PLAYING' || gameState === 'DEAD') announceDeparture();
     });
 
@@ -2368,6 +2520,7 @@
           openPadKeyboard(field);
         }         else if (hit) hit.click();
         else if (playing && isZombies() && stallAt(mouse.worldX, mouse.worldY)) buyTowerFromShop(stallAt(mouse.worldX, mouse.worldY));
+        else if (playing && isZombies() && towerAt(mouse.worldX, mouse.worldY)) selectTower(towerAt(mouse.worldX, mouse.worldY).id);
         else if (playing && isZombies() && towerPick) requestPlace(mouse.worldX, mouse.worldY);
         else if (playing) {
           padState.ownsGun = true;
@@ -3189,9 +3342,12 @@
           if (msg.zombie) applyZombieState(msg.zombie);
         }
         else if (msg.type === 'ZOMBIE_LOST' && !isHost) {
-          finishZombieRun(msg.reason || 'The run is over.', true);
+          finishZombieRun(msg.reason || 'The run is over.', true, msg.wave);
         }
         else if (msg.type === 'TOWER_SHOP' && isHost) hostUnlockTower(msg.id, msg.buyerId);
+        else if (msg.type === 'UPGRADE_TOWER' && isHost) upgradeTower(msg.id, msg.buyerId);
+        else if (msg.type === 'SELL_TOWER' && isHost) sellTower(msg.id, msg.buyerId);
+        else if (msg.type === 'TOWER_FX' && msg.fx) towerFx.push(msg.fx);
         else if (msg.type === 'PLACE_WIRE' && isHost) placeWire(msg.x1, msg.y1, msg.x2, msg.y2, msg.buyerId);
         else if (msg.type === 'PLACE_TOWER' && isHost) placeTower(msg.x, msg.y, msg.kind, msg.buyerId);
         else if (msg.type === 'PLACE_WALL' && isHost) placeWall(msg.x1, msg.y1, msg.x2, msg.y2, msg.buyerId);
@@ -3485,9 +3641,124 @@
       }
       const chatPanel = document.getElementById('chatPanel');
       if (chatPanel) chatPanel.classList.toggle('hidden', !isOnlineMatch());
-      gameState = 'PLAYING';
+      gameState = 'BRIEFING';
       lastTime = performance.now();
       ensureSim();
+      openTutorial();
+    }
+
+    let tutorialIndex = 0;
+    let tutorialSteps = [];
+
+    function tutorialBrief() {
+      const fly = [shownBind('up', 'padFly'), shownBind('left', 'padFly'), shownBind('down', 'padFly'), shownBind('right', 'padFly')].join(' ');
+      const gun = shownBind('gun', 'padGun');
+      const rocket = shownBind('rocket', 'padRocket');
+      const flare = shownBind('flare', 'padFlare');
+      const map = shownBind('map', 'padMap');
+      const chat = shownBind('chat', 'padChat');
+      if (isZombies()) {
+        return {
+          title: 'ZOMBIES',
+          kicker: 'HOLD THE ROAD',
+          accent: 'lime',
+          steps: [
+            'Zombies march down the road toward your base. Stop them before they cross the line. If the base falls, or every pilot is down, the run ends.',
+            'Fly with ' + fly + '. Clear a placement and hold ' + gun + ' to fire the chain gun. Pilots cannot hurt each other. ' + map + ' opens the map.',
+            'The shop behind the line sells towers for your own gems. Place them with your cash, then click a tower to upgrade it or sell it for half of what you spent. 0 builds a wall, 1 builds barbed wire after you buy it, and 2–9 place towers you own. The map holds 50 towers. Cash from kills and nights is split across the pilots. Your best night is saved to your account.'
+          ]
+        };
+      }
+      if (selectedMode === 'SANDBOX') {
+        return {
+          title: 'SANDBOX',
+          kicker: 'TRY ANY BUILD',
+          accent: 'amber',
+          steps: [
+            'Sandbox is the combat game with cheats. God mode starts on, so you cannot die until you turn it off from the sandbox bar.',
+            'Fly with ' + fly + '. Aim with the cursor, hold ' + gun + ' for the chain gun, and press ' + rocket + ' for rockets. ' + flare + ' drops flares.',
+            'Use the sandbox bar to add levels, unlock a class, power, or helicopter, or down your own chopper. Friends join with a sandbox room code. Leave the code blank to host.'
+          ]
+        };
+      }
+      if (selectedMode === 'MULTI') {
+        return {
+          title: 'MULTIPLAYER',
+          kicker: 'SHARED ROOM',
+          accent: 'emerald',
+          steps: [
+            'You are in a live room with other pilots. Leave the room code blank to host, or enter a code to join. The code is on the HUD.',
+            'Fly with ' + fly + '. Aim with the cursor, hold ' + gun + ' for the chain gun, and press ' + rocket + ' for rockets. ' + flare + ' drops flares when a missile locks you. ' + chat + ' opens chat.',
+            'Other helicopters are hostile. Kills give XP for the + upgrades. Level 10 picks a class, and later levels unlock powers. If you go down in multiplayer, you keep half your level.'
+          ]
+        };
+      }
+      return {
+        title: 'SINGLEPLAYER',
+        kicker: 'COMBAT',
+        accent: 'emerald',
+        steps: [
+          'Fly with ' + fly + '. Aim with the cursor and hold ' + gun + ' to fire the chain gun.',
+          'Press ' + rocket + ' for rockets. Press ' + flare + ' when a missile locks on to drop flares. ' + map + ' opens the tactical map, and ESC opens the menu.',
+          'Destroy targets to earn XP. Spend it on the + upgrades. Level 10 lets you pick a class. Later levels unlock a power and a helicopter model.'
+        ]
+      };
+    }
+
+    function renderTutorial() {
+      const card = document.getElementById('tutorialCard');
+      const title = document.getElementById('tutorialTitle');
+      const kicker = document.getElementById('tutorialKicker');
+      const body = document.getElementById('tutorialBody');
+      const step = document.getElementById('tutorialStep');
+      const next = document.getElementById('tutorialNextBtn');
+      const accent = card ? card.dataset.accent || 'emerald' : 'emerald';
+      const colors = {
+        emerald: ['border-emerald-500/60', 'text-emerald-300/80', 'text-emerald-400'],
+        lime: ['border-lime-500/60', 'text-lime-300/80', 'text-lime-300'],
+        amber: ['border-amber-500/60', 'text-amber-300/80', 'text-amber-300']
+      };
+      if (title) title.textContent = card && card.dataset.title ? card.dataset.title : 'BRIEFING';
+      if (kicker) kicker.textContent = card && card.dataset.kicker ? card.dataset.kicker : 'BRIEFING';
+      if (body) body.textContent = tutorialSteps[tutorialIndex] || '';
+      if (step) step.textContent = (tutorialIndex + 1) + ' / ' + tutorialSteps.length;
+      if (next) next.textContent = tutorialIndex >= tutorialSteps.length - 1 ? 'START' : 'NEXT';
+      if (card) {
+        const tone = colors[accent] || colors.emerald;
+        card.className = 'hud-glass p-6 rounded-2xl max-w-md w-full border-2 shadow-2xl relative z-[1251] ' + tone[0];
+        if (kicker) kicker.className = 'text-[10px] font-black tracking-widest mb-1 ' + tone[1];
+        if (title) title.className = 'text-2xl font-black tracking-widest mb-1 ' + tone[2];
+      }
+    }
+
+    function openTutorial() {
+      const brief = tutorialBrief();
+      tutorialSteps = brief.steps;
+      tutorialIndex = 0;
+      const card = document.getElementById('tutorialCard');
+      if (card) {
+        card.dataset.accent = brief.accent;
+        card.dataset.title = brief.title;
+        card.dataset.kicker = brief.kicker;
+      }
+      renderTutorial();
+      showModal('tutorialOverlay');
+    }
+
+    function closeTutorial() {
+      hideModal('tutorialOverlay');
+      if (gameState === 'BRIEFING') {
+        gameState = 'PLAYING';
+        lastTime = performance.now();
+      }
+    }
+
+    function advanceTutorial() {
+      if (tutorialIndex >= tutorialSteps.length - 1) closeTutorial();
+      else {
+        tutorialIndex += 1;
+        renderTutorial();
+      }
     }
 
     let simRunning = false;
@@ -3788,14 +4059,14 @@
     }
 
     const TOWER_DEFS = [
-      { id: 'GUN', name: 'GUN NEST', gems: 0, cost: 75, range: 210, rate: 18, damage: 9, color: '#94a3b8' },
-      { id: 'MG', name: 'MG PIT', gems: 14, cost: 180, range: 190, rate: 6, damage: 5, color: '#38bdf8' },
-      { id: 'ROCKET', name: 'ROCKET', gems: 32, cost: 340, range: 260, rate: 160, damage: 30, splash: 40, color: '#f97316' },
-      { id: 'FLAME', name: 'FLAME', gems: 55, cost: 460, range: 125, rate: 4, damage: 4, color: '#ef4444' },
-      { id: 'SNIPER', name: 'SNIPER', gems: 85, cost: 680, range: 440, rate: 48, damage: 58, color: '#e2e8f0' },
-      { id: 'TESLA', name: 'TESLA', gems: 125, cost: 920, range: 175, rate: 30, damage: 20, chain: 2, color: '#22d3ee' },
-      { id: 'MORTAR', name: 'MORTAR', gems: 175, cost: 1200, range: 380, rate: 110, damage: 44, splash: 62, color: '#a3e635' },
-      { id: 'RAIL', name: 'RAIL', gems: 250, cost: 1600, range: 500, rate: 86, damage: 140, color: '#c4b5fd' }
+      { id: 'GUN', name: 'GUN NEST', gems: 0, cost: 30, range: 210, rate: 18, damage: 9, color: '#94a3b8' },
+      { id: 'MG', name: 'MG PIT', gems: 14, cost: 75, range: 190, rate: 6, damage: 5, color: '#38bdf8' },
+      { id: 'ROCKET', name: 'ROCKET', gems: 32, cost: 140, range: 260, rate: 160, damage: 30, splash: 40, color: '#f97316' },
+      { id: 'FLAME', name: 'FLAME', gems: 55, cost: 190, range: 125, rate: 4, damage: 4, color: '#ef4444' },
+      { id: 'SNIPER', name: 'SNIPER', gems: 85, cost: 280, range: 440, rate: 48, damage: 58, color: '#e2e8f0' },
+      { id: 'TESLA', name: 'TESLA', gems: 125, cost: 380, range: 175, rate: 30, damage: 20, chain: 2, color: '#22d3ee' },
+      { id: 'MORTAR', name: 'MORTAR', gems: 175, cost: 500, range: 380, rate: 110, damage: 44, splash: 62, color: '#a3e635' },
+      { id: 'RAIL', name: 'RAIL', gems: 250, cost: 680, range: 500, rate: 86, damage: 140, color: '#c4b5fd' }
     ];
 
     function towerDef(id) {
@@ -3930,7 +4201,52 @@
     function clearPlacement() {
       towerPick = null;
       wallAnchor = null;
+      selectedTowerId = null;
       refreshTowerShop();
+    }
+
+    function towerAt(x, y) {
+      let best = null;
+      let bestD = 26;
+      (zombie && zombie.towers || []).forEach(t => {
+        if (!(t.hp > 0)) return;
+        const d = Math.hypot(t.x - x, t.y - y);
+        if (d < bestD) { bestD = d; best = t; }
+      });
+      return best;
+    }
+
+    function selectTower(id) {
+      selectedTowerId = id;
+      towerPick = null;
+      wallAnchor = null;
+      refreshTowerShop();
+    }
+
+    function selectedTower() {
+      return (zombie && zombie.towers || []).find(t => t.id === selectedTowerId && t.hp > 0) || null;
+    }
+
+    function towerStats(t) {
+      const def = towerDef(t && t.kind);
+      if (!def) return null;
+      const rank = Math.max(0, Math.min(TOWER_RANK_MAX, t.rank || 0));
+      return Object.assign({}, def, {
+        damage: def.damage * (1 + rank * 0.3),
+        range: Math.round(def.range * (1 + rank * 0.12)),
+        rate: Math.max(2, Math.round(def.rate * Math.pow(0.84, rank))),
+        splash: def.splash ? Math.round(def.splash * (1 + rank * 0.1)) : 0,
+        rank: rank
+      });
+    }
+
+    function upgradeCost(def, rank) {
+      return Math.round(def.cost * (0.8 + (rank || 0) * 0.7));
+    }
+
+    function sellValue(t) {
+      const def = towerDef(t.kind);
+      return Math.floor((t.spent || (def && def.cost) || 0) / 2);
     }
 
     function requestTower(id) {
@@ -3938,6 +4254,7 @@
       if (towerPick === id) { clearPlacement(); return; }
       towerPick = id;
       wallAnchor = null;
+      selectedTowerId = null;
       refreshTowerShop();
     }
 
@@ -4019,6 +4336,7 @@
       if (towerPick === 'WALL') { clearPlacement(); return; }
       towerPick = 'WALL';
       wallAnchor = null;
+      selectedTowerId = null;
       refreshTowerShop();
     }
 
@@ -4030,6 +4348,7 @@
       if (towerPick === 'WIRE') { clearPlacement(); return; }
       towerPick = 'WIRE';
       wallAnchor = null;
+      selectedTowerId = null;
       refreshTowerShop();
     }
 
@@ -4209,13 +4528,75 @@
         floatingTexts.push({ x: x, y: y - 16, text: 'BLOCKED', color: '#fca5a5', life: 28 });
         return;
       }
+      if (zombie.towers.filter(t => t.hp > 0).length >= TOWER_MAX) {
+        floatingTexts.push({ x: x, y: y - 16, text: 'TOWER LIMIT ' + TOWER_MAX, color: '#fca5a5', life: 36 });
+        return;
+      }
       if (!spendZombieCash(buyerId, def.cost)) {
         floatingTexts.push({ x: x, y: y - 16, text: 'NEED $' + def.cost, color: '#fca5a5', life: 36 });
         return;
       }
-      const hp = 110 + Math.round(def.cost * 0.08);
-      zombie.towers.push({ id: 'tw_' + Date.now() + '_' + Math.floor(Math.random() * 999), kind: kind, x: x, y: y, cool: 8, aim: -Math.PI / 2, hp: hp, maxHp: hp });
+      const hp = 160;
+      zombie.towers.push({ id: 'tw_' + Date.now() + '_' + Math.floor(Math.random() * 999), kind: kind, x: x, y: y, cool: 8, aim: -Math.PI / 2, hp: hp, maxHp: hp, ownerId: buyerId || localPlayer.id, rank: 0, spent: def.cost });
       refreshZombieHud();
+    }
+
+    function upgradeTower(id, buyerId) {
+      if (!isHost || !zombie || zombie.over) return;
+      const buyer = buyerId || localPlayer.id;
+      const tower = (zombie.towers || []).find(t => t.id === id && t.hp > 0);
+      const def = tower && towerDef(tower.kind);
+      if (!tower || !def || tower.ownerId !== buyer) return;
+      const rank = tower.rank || 0;
+      if (rank >= TOWER_RANK_MAX) {
+        floatingTexts.push({ x: tower.x, y: tower.y - 18, text: 'MAX RANK', color: '#fde68a', life: 30 });
+        return;
+      }
+      const cost = upgradeCost(def, rank);
+      if (!spendZombieCash(buyer, cost)) {
+        floatingTexts.push({ x: tower.x, y: tower.y - 18, text: 'NEED $' + cost, color: '#fca5a5', life: 36 });
+        return;
+      }
+      tower.rank = rank + 1;
+      tower.spent = (tower.spent || def.cost) + cost;
+      const bonus = Math.round((tower.maxHp || 160) * 0.22);
+      tower.maxHp = (tower.maxHp || 160) + bonus;
+      tower.hp = Math.min(tower.maxHp, (tower.hp || 0) + bonus);
+      floatingTexts.push({ x: tower.x, y: tower.y - 20, text: 'RANK ' + (tower.rank + 1), color: '#86efac', life: 36 });
+      refreshZombieHud();
+    }
+
+    function sellTower(id, buyerId) {
+      if (!isHost || !zombie || zombie.over) return;
+      const buyer = buyerId || localPlayer.id;
+      const tower = (zombie.towers || []).find(t => t.id === id && t.hp > 0);
+      if (!tower || tower.ownerId !== buyer) return;
+      const refund = sellValue(tower);
+      grantZombieStartCash(buyer);
+      zombie.purses[buyer] += refund;
+      zombie.towers = zombie.towers.filter(t => t.id !== tower.id);
+      if (selectedTowerId === tower.id) selectedTowerId = null;
+      floatingTexts.push({ x: tower.x, y: tower.y - 16, text: 'SOLD $' + refund, color: '#fde68a', life: 40 });
+      refreshZombieHud();
+    }
+
+    function requestUpgrade() {
+      const tower = selectedTower();
+      if (!tower || tower.ownerId !== localPlayer.id) return;
+      if (!isHost) broadcast({ type: 'UPGRADE_TOWER', id: tower.id, buyerId: localPlayer.id });
+      else upgradeTower(tower.id, localPlayer.id);
+    }
+
+    function requestSell() {
+      const tower = selectedTower();
+      if (!tower || tower.ownerId !== localPlayer.id) return;
+      if (!isHost) broadcast({ type: 'SELL_TOWER', id: tower.id, buyerId: localPlayer.id });
+      else sellTower(tower.id, localPlayer.id);
+    }
+
+    function addTowerFx(fx) {
+      towerFx.push(fx);
+      if (isHost && isOnlineMatch()) broadcast({ type: 'TOWER_FX', fx: fx });
     }
 
     function nearestZombie(x, y, range) {
@@ -4261,21 +4642,23 @@
       reapDefenses();
       (zombie.towers || []).forEach(t => {
         if (!(t.hp > 0)) return;
-        const def = towerDef(t.kind);
-        if (!def) return;
+        const stats = towerStats(t);
+        if (!stats) return;
         t.cool = Math.max(0, (t.cool || 0) - dt);
-        const target = nearestZombie(t.x, t.y, def.range);
+        const target = nearestZombie(t.x, t.y, stats.range);
         if (!target) return;
         t.aim = Math.atan2(target.y - t.y, target.x - t.x);
         if (t.cool > 0) return;
-        t.cool = def.rate;
-        if (def.splash) launchTowerRocket(t, target, def);
+        t.cool = stats.rate;
+        if (stats.splash) launchTowerRocket(t, target, stats);
         else if (t.kind === 'FLAME' || t.kind === 'TESLA') {
-          hurtZombie(target, def.damage);
-          if (t.kind === 'TESLA' && isOnlineMatch()) broadcast({ type: 'TOWER_BLAST', x: target.x, y: target.y, radius: 36 });
+          hurtZombie(target, stats.damage);
+          if (t.kind === 'FLAME') addTowerFx({ kind: 'FLAME', x: t.x, y: t.y, angle: t.aim, range: stats.range * 0.85, life: 12, max: 12 });
           if (t.kind === 'TESLA') {
+            addTowerFx({ kind: 'RAIL', x1: t.x, y1: t.y, x2: target.x, y2: target.y, life: 6, max: 6, hue: 'tesla' });
+            if (isOnlineMatch()) broadcast({ type: 'TOWER_BLAST', x: target.x, y: target.y, radius: 36 });
             let prev = target;
-            for (let n = 0; n < (def.chain || 0); n++) {
+            for (let n = 0; n < (stats.chain || 0); n++) {
               let next = null;
               let nd = 90;
               pveUnits.forEach(u => {
@@ -4284,13 +4667,15 @@
                 if (d < nd) { nd = d; next = u; }
               });
               if (!next) break;
-              hurtZombie(next, def.damage * 0.6);
+              hurtZombie(next, stats.damage * 0.6);
+              addTowerFx({ kind: 'RAIL', x1: prev.x, y1: prev.y, x2: next.x, y2: next.y, life: 6, max: 6, hue: 'tesla' });
               prev = next;
             }
           }
         } else {
           const speed = (t.kind === 'SNIPER' || t.kind === 'RAIL') ? 18 : (t.kind === 'MG' ? 11 : 8);
-          towerBullet(t.x, t.y, t.aim, speed, def.damage, speed > 12 ? 36 : 55);
+          towerBullet(t.x, t.y, t.aim, speed, stats.damage, speed > 12 ? 36 : 55);
+          if (t.kind === 'RAIL') addTowerFx({ kind: 'RAIL', x1: t.x, y1: t.y, x2: target.x, y2: target.y, life: 10, max: 10, hue: 'rail' });
         }
       });
     }
@@ -4304,9 +4689,18 @@
       const wallCount = standingWalls();
       const wires = wireCount(localPlayer.id);
       const ownsWire = playerOwns(localPlayer.id, 'WIRE');
-      const sig = TOWER_DEFS.map(d => (playerOwns(localPlayer.id, d.id) ? '1' : '0')).join('') + (ownsWire ? 'W' : '') + '|' + towerPick + (wallAnchor ? 'A' : '') + '|' + wallCount + '|' + wires + '|' + Math.floor(myGems());
+      const pickedTower = selectedTower();
+      const sig = TOWER_DEFS.map(d => (playerOwns(localPlayer.id, d.id) ? '1' : '0')).join('') + (ownsWire ? 'W' : '') + '|' + towerPick + (wallAnchor ? 'A' : '') + '|' + wallCount + '|' + wires + '|' + Math.floor(myGems()) + '|' + (pickedTower ? pickedTower.id + ':' + (pickedTower.rank || 0) + ':' + Math.floor(myZombieCash()) : '');
       if (row.dataset.sig === sig && row.childElementCount) return;
       row.dataset.sig = sig;
+      let manage = '';
+      if (pickedTower && pickedTower.ownerId === localPlayer.id) {
+        const def = towerDef(pickedTower.kind);
+        const rank = pickedTower.rank || 0;
+        const maxed = rank >= TOWER_RANK_MAX;
+        manage = '<button type="button" data-tower="UPGRADE" class="shrink-0 px-2 py-1 rounded border text-[9px] leading-tight font-bold border-lime-300 bg-lime-500/20 text-lime-100" style="min-width:78px">' + (maxed ? 'MAX RANK' : ('UPGRADE $' + upgradeCost(def, rank))) + '<br>LV ' + (rank + 1) + '/' + (TOWER_RANK_MAX + 1) + '</button>'
+          + '<button type="button" data-tower="SELL" class="shrink-0 px-2 py-1 rounded border text-[9px] leading-tight font-bold border-rose-300 bg-rose-500/15 text-rose-100" style="min-width:78px">SELL<br>$' + sellValue(pickedTower) + '</button>';
+      }
       const heli = '<button type="button" data-tower="HELI" class="shrink-0 px-2 py-1 rounded border text-[9px] leading-tight font-bold ' + (!towerPick ? 'border-sky-300 bg-sky-500/20 text-sky-100' : 'border-stone-600 text-stone-200') + '" style="min-width:78px">HELI GUN<br>DESELECT</button>';
       const wallBtn = '<button type="button" data-tower="WALL" class="shrink-0 px-2 py-1 rounded border text-[9px] leading-tight font-bold ' + (towerPick === 'WALL' ? 'border-amber-300 bg-amber-500/20 text-amber-100' : 'border-orange-900 text-orange-200') + '" style="min-width:78px">0 WALL ' + wallCount + '/' + WALL_MAX + '<br>$' + WALL_COST + ' / STRETCH</button>';
       const wireBtn = ownsWire ? '<button type="button" data-tower="WIRE" class="shrink-0 px-2 py-1 rounded border text-[9px] leading-tight font-bold ' + (towerPick === 'WIRE' ? 'border-rose-300 bg-rose-500/20 text-rose-100' : 'border-rose-900 text-rose-200') + '" style="min-width:78px">1 WIRE ' + wires + '/' + WIRE_MAX + '<br>$' + WIRE_PLACE + ' / STRETCH</button>' : '';
@@ -4315,7 +4709,7 @@
         const picked = towerPick === def.id;
         const key = TOWER_DEFS.indexOf(def) + 2;
         return '<button type="button" data-tower="' + def.id + '" class="shrink-0 px-2 py-1 rounded border text-[9px] leading-tight font-bold ' + (picked ? 'border-amber-300 bg-amber-500/20 text-amber-100' : 'border-stone-600 text-stone-200') + '" style="min-width:78px">' + key + ' ' + def.name + '<br>PLACE $' + def.cost + '</button>';
-      }).join('') + heli;
+      }).join('') + manage + heli;
       row.querySelectorAll('button').forEach(btn => {
         btn.addEventListener('click', (e) => {
           e.stopPropagation();
@@ -4323,6 +4717,8 @@
           if (id === 'HELI') clearPlacement();
           else if (id === 'WALL') selectWall();
           else if (id === 'WIRE') selectWire();
+          else if (id === 'UPGRADE') requestUpgrade();
+          else if (id === 'SELL') requestSell();
           else requestTower(id);
         });
       });
@@ -4471,18 +4867,75 @@
       }
     }
 
+    function drawTowerFx() {
+      towerFx.forEach(fx => {
+        const fade = Math.max(0, fx.life / (fx.max || 1));
+        ctx.save();
+        ctx.globalAlpha = fade;
+        if (fx.kind === 'FLAME') {
+          ctx.translate(fx.x, fx.y);
+          ctx.rotate(fx.angle || 0);
+          const tongues = fx.hue === 'muzzle' ? 2 : 5;
+          for (let i = 0; i < tongues; i++) {
+            const len = (fx.range || 40) * (0.4 + i * 0.14);
+            ctx.fillStyle = fx.hue === 'muzzle' ? '#fde68a' : (i % 2 ? '#fde047' : '#f97316');
+            ctx.globalAlpha = fade * (0.7 - i * 0.1);
+            ctx.beginPath();
+            ctx.moveTo(8, 0);
+            ctx.lineTo(len, -(4 + i * 3));
+            ctx.lineTo(len * 0.9, 4 + i * 3);
+            ctx.fill();
+          }
+        } else if (fx.kind === 'RAIL') {
+          const core = fx.hue === 'tesla' ? '#67e8f9' : '#f5f3ff';
+          const glow = fx.hue === 'tesla' ? 'rgba(34, 211, 238, 0.45)' : 'rgba(196, 181, 253, 0.5)';
+          ctx.strokeStyle = glow;
+          ctx.lineWidth = fx.hue === 'tesla' ? 5 : 12;
+          ctx.beginPath();
+          ctx.moveTo(fx.x1, fx.y1);
+          ctx.lineTo(fx.x2, fx.y2);
+          ctx.stroke();
+          ctx.strokeStyle = core;
+          ctx.lineWidth = 2;
+          ctx.stroke();
+          ctx.fillStyle = core;
+          ctx.beginPath();
+          ctx.arc(fx.x2, fx.y2, 6 + (1 - fade) * 12, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.restore();
+      });
+    }
+
     function drawTowers() {
       if (!zombie) return;
+      drawTowerFx();
       (zombie.towers || []).forEach(t => {
         const def = towerDef(t.kind);
         if (!def) return;
+        const picked = t.id === selectedTowerId;
+        if (picked) {
+          const stats = towerStats(t);
+          ctx.beginPath();
+          ctx.arc(t.x, t.y, stats ? stats.range : def.range, 0, Math.PI * 2);
+          ctx.strokeStyle = 'rgba(250, 204, 21, 0.45)';
+          ctx.lineWidth = 1.5;
+          ctx.setLineDash([6, 5]);
+          ctx.stroke();
+          ctx.setLineDash([]);
+          ctx.strokeStyle = '#fde68a';
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(t.x, t.y, 22, 0, Math.PI * 2);
+          ctx.stroke();
+        }
         ctx.save();
         ctx.translate(t.x, t.y);
         drawTowerBody(t, def);
         ctx.fillStyle = '#f8fafc';
         ctx.font = 'bold 8px Orbitron';
         ctx.textAlign = 'center';
-        ctx.fillText(def.name, 0, -24);
+        ctx.fillText(def.name + ' ' + ((t.rank || 0) + 1), 0, -24);
         ctx.restore();
         const maxHp = t.maxHp || t.hp || 1;
         const ratio = Math.max(0, t.hp / maxHp);
@@ -4500,6 +4953,7 @@
       if ((zombie.towers || []).some(t => Math.hypot(t.x - x, t.y - y) < 48)) return false;
       if ((zombie.wrecks || []).some(w => Math.hypot(w.x - x, w.y - y) < 48)) return false;
       if ((zombie.walls || []).some(w => w.hp > 0 && distToSeg(x, y, w).d < 22)) return false;
+      if ((zombie.towers || []).filter(t => t.hp > 0).length >= TOWER_MAX) return false;
       return myZombieCash() >= def.cost;
     }
 
@@ -4631,15 +5085,15 @@
 
     function pickZombieKind(wave) {
       const list = ['ZOMBIE_WALKER'];
-      if (wave >= 5) list.push('ZOMBIE_CRAWLER');
-      if (wave >= 10) list.push('ZOMBIE_RUNNER');
-      if (wave >= 16) list.push('ZOMBIE_SPITTER');
-      if (wave >= 22) list.push('ZOMBIE_BRUTE');
-      if (wave >= 28) list.push('ZOMBIE_BLOATER');
-      if (wave >= 34) list.push('ZOMBIE_SCREAMER');
-      if (wave >= 40) list.push('ZOMBIE_LEAPER');
-      if (wave >= 48) list.push('ZOMBIE_JUGGERNAUT');
-      const index = Math.min(list.length - 1, Math.floor(Math.pow(Math.random(), 0.62) * list.length));
+      if (wave >= 3) list.push('ZOMBIE_CRAWLER');
+      if (wave >= 6) list.push('ZOMBIE_RUNNER');
+      if (wave >= 10) list.push('ZOMBIE_SPITTER');
+      if (wave >= 14) list.push('ZOMBIE_BRUTE');
+      if (wave >= 18) list.push('ZOMBIE_BLOATER');
+      if (wave >= 23) list.push('ZOMBIE_SCREAMER');
+      if (wave >= 28) list.push('ZOMBIE_LEAPER');
+      if (wave >= 34) list.push('ZOMBIE_JUGGERNAUT');
+      const index = Math.min(list.length - 1, Math.floor(Math.pow(Math.random(), 0.48) * list.length));
       return list[index];
     }
 
@@ -4656,12 +5110,13 @@
         ZOMBIE_JUGGERNAUT: { hp: 380, speed: 0.28, bite: 22, baseDmg: 80, radius: 28 }
       };
       const base = table[kind] || table.ZOMBIE_WALKER;
-      const scale = 1 + (wave - 1) * 0.12;
+      const late = Math.max(0, wave - 6);
+      const scale = 1 + (wave - 1) * 0.1 + late * late * 0.0045;
       return {
         hp: base.hp * scale,
-        speed: base.speed + Math.min(0.28, wave * 0.01),
-        bite: base.bite + wave * 0.35,
-        baseDmg: base.baseDmg + wave * 1.5,
+        speed: base.speed + Math.min(0.75, wave * 0.012 + late * 0.012),
+        bite: base.bite + wave * 0.35 + late * 0.2,
+        baseDmg: base.baseDmg + wave * 1.5 + late * late * 0.08,
         radius: base.radius * 1.45
       };
     }
@@ -4686,7 +5141,7 @@
       return {
         wave: zombie.wave, leftToSpawn: zombie.leftToSpawn, breakTimer: zombie.breakTimer,
         baseHp: zombie.baseHp, baseMax: zombie.baseMax, over: zombie.over,
-        wrecks: zombie.wrecks || [], globs: zombie.globs || [],
+        wrecks: zombie.wrecks || [], globs: zombie.globs || [], clouds: zombie.clouds || [],
         cash: myZombieCash(), gemsBy: zombie.gemsBy || {}, ownedBy: zombie.ownedBy || {},
         purses: zombie.purses || {}, earned: zombie.earned || {},
         towers: zombie.towers || [], walls: zombie.walls || [], wires: zombie.wires || [], score: localPlayer.score || 0
@@ -4725,6 +5180,7 @@
       zombie.over = !!state.over;
       if (state.wrecks) zombie.wrecks = state.wrecks;
       if (state.globs) zombie.globs = state.globs;
+      if (state.clouds) zombie.clouds = state.clouds;
       if (state.purses) zombie.purses = state.purses;
       if (state.earned) zombie.earned = state.earned;
       if (state.earned && state.earned[localPlayer.id] != null) localPlayer.score = Math.round(state.earned[localPlayer.id]);
@@ -4747,6 +5203,7 @@
         const calls = ['CONTACT NORTH', 'THEY BROKE THE TREE LINE', 'HOLD THE WIRE', 'STAY AIRBORNE', 'DO NOT LET THEM IN'];
         floatingTexts.push({ x: localPlayer.x, y: localPlayer.y - 48, text: 'NIGHT ' + zombie.wave + ' · ' + calls[zombie.wave % calls.length], color: '#bef264', life: 90 });
         reviveDownedPilot();
+        commitZombieBest(zombie.wave, Math.max(localPlayer.score || 0, (zombie.earned && zombie.earned[localPlayer.id]) || 0));
         if (isHost) grantZombiePay((3 + zombie.wave) * 4, 1 + (zombie.wave % 2 === 0 ? 1 : 0), localPlayer.x, localPlayer.y - 24);
       }
       refreshZombieHud();
@@ -4759,26 +5216,18 @@
     }
 
     function rememberZombieBest() {
-      const score = localPlayer.score || 0;
+      const score = Math.max(localPlayer.score || 0, (zombie && zombie.earned && zombie.earned[localPlayer.id]) || 0);
       const wave = zombie ? zombie.wave : 1;
-      zombie.bestScore = Math.max(zombie.bestScore || 0, score);
-      zombie.bestWave = Math.max(zombie.bestWave || 1, wave);
-      const prevWave = accountZombieBest.wave || 0;
-      const prevScore = accountZombieBest.score || 0;
-      const beat = wave > prevWave || (wave === prevWave && score > prevScore);
-      if (signedInName && beat) {
-        accountZombieBest = { wave: wave, score: score };
-        postFeedback({ op: 'zbest', name: signedInName, wave: wave, score: score }).catch(() => {});
-        try { localStorage.setItem('apacheCopterZombieBest:' + accountKey(signedInName), JSON.stringify(accountZombieBest)); } catch (err) {}
+      if (zombie) {
+        zombie.bestScore = Math.max(zombie.bestScore || 0, score);
+        zombie.bestWave = Math.max(zombie.bestWave || 1, wave);
       }
-      try {
-        localStorage.setItem('apacheCopterZombieBest', String(zombie.bestScore));
-        localStorage.setItem('apacheCopterZombieWave', String(zombie.bestWave));
-      } catch (err) {}
+      commitZombieBest(wave, score);
     }
 
-    function finishZombieRun(reason, remote) {
+    function finishZombieRun(reason, remote, wave) {
       if (!isZombies() || !zombie || zombie.over) return;
+      if (wave) zombie.wave = Math.max(zombie.wave || 1, Number(wave) || 1);
       zombie.over = true;
       zombie.baseHp = Math.max(0, zombie.baseHp || 0);
       rememberZombieBest();
@@ -4837,6 +5286,8 @@
       localPlayer.score = 0;
       towerPick = 'GUN';
       wallAnchor = null;
+      selectedTowerId = null;
+      towerFx = [];
       const purses = {};
       const earned = {};
       const gemsBy = {};
@@ -4849,7 +5300,7 @@
       };
       seedLoadout(localPlayer.id);
       Object.keys(remotePlayers).forEach(seedLoadout);
-      zombie = { wave: 1, leftToSpawn: 8, spawnTimer: 40, breakTimer: 0, baseHp: 800, baseMax: 800, over: false, seenWave: 0, bestScore: bestScore, bestWave: bestWave, globs: [], cash: ZOMBIE_START_CASH, gemsBy: gemsBy, ownedBy: ownedBy, towers: [], walls: [], wires: [], purses: purses, earned: earned };
+      zombie = { wave: 1, leftToSpawn: 8, spawnTimer: 40, breakTimer: 0, baseHp: 800, baseMax: 800, over: false, seenWave: 0, bestScore: bestScore, bestWave: bestWave, globs: [], clouds: [], cash: ZOMBIE_START_CASH, gemsBy: gemsBy, ownedBy: ownedBy, towers: [], walls: [], wires: [], purses: purses, earned: earned };
       zombie.wrecks = [0.32, 0.52, 0.72].map((t, i) => ({
         x: lane.x + lane.w * (i % 2 ? 0.3 : 0.7),
         y: lane.y + 80 + (lane.h - 280) * t
@@ -4878,22 +5329,46 @@
     }
 
     function burstBloater(u) {
-      createExplosion(u.x, u.y, 78, 0, null);
+      if (u.gasBurst) return;
+      u.gasBurst = true;
+      for (let i = 0; i < 16; i++) {
+        const ang = Math.random() * Math.PI * 2;
+        const spd = 0.35 + Math.random() * 1.4;
+        particles.push({ x: u.x, y: u.y, vx: Math.cos(ang) * spd, vy: Math.sin(ang) * spd - 0.2, life: 50, maxLife: 50, radius: 7 + Math.random() * 12, type: 'GAS' });
+      }
+      floatingTexts.push({ x: u.x, y: u.y - 18, text: 'GAS', color: '#bef264', life: 40 });
       if (!isHost || !zombie || zombie.over) return;
-      zombie.baseHp -= 18;
-      const close = (ent) => ent && ent.hp > 0 && Math.hypot(ent.x - u.x, ent.y - u.y) < 100;
-      if (close(localPlayer) && !isGodMode) {
-        applyHullDamage(22);
-        infectPilot(120);
-        updateHUD();
-        if (localPlayer.hp <= 0) downPilot();
-      }
-      if (isOnlineMatch()) {
-        Object.values(remotePlayers).forEach(rp => {
-          if (close(rp)) broadcast({ type: 'HIT', targetId: rp.id, damage: 22, shooterId: u.id, weapon: 'ZOMBIE' });
-        });
-      }
-      if (zombie.baseHp <= 0) finishZombieRun('A bloater blew the wire.');
+      zombie.clouds = zombie.clouds || [];
+      zombie.clouds.push({ id: 'gas_' + u.id, x: u.x, y: u.y, r: 30, maxR: 108, life: 280, max: 280, tick: 0 });
+    }
+
+    function updateGasClouds(dt) {
+      if (!isHost || !zombie || zombie.over) return;
+      zombie.clouds = (zombie.clouds || []).filter(c => {
+        c.life -= dt;
+        c.r += (c.maxR - c.r) * Math.min(1, 0.035 * dt);
+        c.tick = (c.tick || 0) - dt;
+        if (c.tick <= 0) {
+          c.tick = 16;
+          const inside = (x, y, pad) => Math.hypot(x - c.x, y - c.y) < c.r + (pad || 0);
+          if (localPlayer.hp > 0 && inside(localPlayer.x, localPlayer.y, 12) && !isGodMode) {
+            applyHullDamage(6);
+            infectPilot(80);
+            updateHUD();
+            if (localPlayer.hp <= 0) downPilot();
+          }
+          Object.values(remotePlayers).forEach(rp => {
+            if (rp.hp > 0 && inside(rp.x, rp.y, 12) && isOnlineMatch()) broadcast({ type: 'HIT', targetId: rp.id, damage: 6, shooterId: 'gas', weapon: 'ZOMBIE' });
+          });
+          (zombie.towers || []).forEach(t => { if (t.hp > 0 && inside(t.x, t.y, 6)) hurtTower(t, 8); });
+          (zombie.walls || []).forEach(w => { if (w.hp > 0 && distToSeg(c.x, c.y, w).d < c.r) hurtWall(w, 4); });
+          if (c.y + c.r >= baseFrontY()) {
+            zombie.baseHp -= 6;
+            if (zombie.baseHp <= 0) finishZombieRun('Toxic gas reached the base.');
+          }
+        }
+        return c.life > 0;
+      });
     }
 
     function placeLocalAtBase() {
@@ -4931,7 +5406,10 @@
         baseDmg: baseDmg,
         radius: radius,
         spitTimer: 70,
-        leapTimer: 50
+        leapTimer: 50,
+        laneBias: (Math.random() - 0.5) * 180,
+        spitGap: Math.max(42, 96 - wave * 1.5),
+        leapGap: Math.max(40, 84 - wave)
       });
     }
 
@@ -5000,6 +5478,7 @@
         }
         return g.life > 0;
       });
+      updateGasClouds(dt);
       updateTowers(dt);
       refreshZombieHud();
     }
@@ -5007,11 +5486,13 @@
     function stepZombie(u, dt) {
       if (!zombie || zombie.over) return;
       const bounds = playBounds();
-      let tx = u.x;
+      const lane = zombieLane();
+      let tx = lane.x + lane.w / 2 + (u.laneBias || 0);
       let ty = baseFrontY() + 20;
       let chase = null;
-      let chaseDist = u.type === 'ZOMBIE_SPITTER' ? 90 : 120;
-      const marked = nearestTower(u.x, u.y, u.type === 'ZOMBIE_SPITTER' ? 200 : 260);
+      let chaseDist = u.type === 'ZOMBIE_RUNNER' ? 190 : (u.type === 'ZOMBIE_SPITTER' ? 80 : (u.type === 'ZOMBIE_CRAWLER' ? 70 : 130));
+      let towerRange = u.type === 'ZOMBIE_JUGGERNAUT' ? 360 : (u.type === 'ZOMBIE_BRUTE' ? 320 : (u.type === 'ZOMBIE_SPITTER' ? 230 : 260));
+      const marked = nearestTower(u.x, u.y, towerRange);
       const consider = (ent) => {
         if (!ent || ent.hp <= 0 || ent.cloak > 0) return;
         const dist = Math.hypot(ent.x - u.x, ent.y - u.y);
@@ -5022,8 +5503,14 @@
       if (marked) { tx = marked.tower.x; ty = marked.tower.y; }
       else if (chase) { tx = chase.x; ty = chase.y; }
       const ang = Math.atan2(ty - u.y, tx - u.x);
-      u.vx = Math.cos(ang) * u.speed;
-      u.vy = Math.sin(ang) * u.speed;
+      let haste = 1;
+      if (u.type !== 'ZOMBIE_SCREAMER') {
+        pveUnits.forEach(other => {
+          if (other.type === 'ZOMBIE_SCREAMER' && other.hp > 0 && Math.hypot(other.x - u.x, other.y - u.y) < 160) haste = 1.34;
+        });
+      }
+      u.vx = Math.cos(ang) * u.speed * haste;
+      u.vy = Math.sin(ang) * u.speed * haste;
       u.hullAngle = ang;
       u.turretAngle = ang;
       const nextX = u.x + u.vx * dt;
@@ -5049,8 +5536,9 @@
         }
       } else {
         let drag = 1;
+        const wireDrag = u.type === 'ZOMBIE_CRAWLER' ? 0.68 : (u.type === 'ZOMBIE_JUGGERNAUT' ? 0.55 : (u.type === 'ZOMBIE_RUNNER' ? 0.45 : 0.32));
         (zombie.wires || []).forEach(w => {
-          if (distToSeg(u.x, u.y, w).d < 20 || distToSeg(nextX, nextY, w).d < 20) drag = 0.32;
+          if (distToSeg(u.x, u.y, w).d < 20 || distToSeg(nextX, nextY, w).d < 20) drag = wireDrag;
         });
         u.x += (nextX - u.x) * drag;
         u.y += (nextY - u.y) * drag;
@@ -5063,7 +5551,7 @@
       if (u.type === 'ZOMBIE_SPITTER' && u.y < baseFrontY() - 160) {
         u.spitTimer = (u.spitTimer || 0) - dt;
         if (u.spitTimer <= 0) {
-          u.spitTimer = 100;
+          u.spitTimer = u.spitGap || 80;
           const aimX = marked ? marked.tower.x : (chase ? chase.x : localPlayer.x);
           zombie.globs = zombie.globs || [];
           zombie.globs.push({ x: u.x, y: u.y + 8, vx: Math.max(-1.6, Math.min(1.6, (aimX - u.x) * 0.01)), vy: 2.4, life: 140 });
@@ -5081,7 +5569,7 @@
             u.leapTimer = 36;
             hurtWall(blockedLeap, u.bite || 8);
           } else {
-            u.leapTimer = 80;
+            u.leapTimer = u.leapGap || 70;
             u.y += 78;
             floatingTexts.push({ x: u.x, y: u.y, text: 'LEAP', color: '#fde68a', life: 20 });
           }
@@ -5270,6 +5758,17 @@
         ctx.fillStyle = '#7f1d1d';
         ctx.fillRect(6, -4, 10, 6);
         ctx.restore();
+      });
+      (zombie && zombie.clouds || []).forEach(c => {
+        const fade = Math.max(0.2, (c.life || 1) / (c.max || 280));
+        const fog = ctx.createRadialGradient(c.x, c.y, Math.max(4, c.r * 0.12), c.x, c.y, c.r || 40);
+        fog.addColorStop(0, 'rgba(217, 249, 157, ' + (0.42 * fade) + ')');
+        fog.addColorStop(0.45, 'rgba(132, 204, 22, ' + (0.28 * fade) + ')');
+        fog.addColorStop(1, 'rgba(54, 83, 20, 0)');
+        ctx.fillStyle = fog;
+        ctx.beginPath();
+        ctx.arc(c.x, c.y, c.r || 40, 0, Math.PI * 2);
+        ctx.fill();
       });
       (zombie && zombie.globs || []).forEach(g => {
         ctx.fillStyle = 'rgba(163, 230, 53, 0.85)';
@@ -6804,6 +7303,7 @@
         return;
       }
       if (gameState === 'PLAYING') {
+        if (isZombies()) towerFx = towerFx.filter(fx => { fx.life -= dt; return fx.life > 0; });
         if (localPlayer.spawnGuard > 0) localPlayer.spawnGuard = Math.max(0, localPlayer.spawnGuard - dt);
         const cloaked = (localPlayer.cloak || 0) > 0;
         const accel = getStatVal('speed') * 0.22 * (cloaked ? 1.22 : 1);
@@ -6845,7 +7345,15 @@
         localPlayer.rotorAngle += 0.45 * dt;
         if (audio.rotorGain && audio.ctx) {
           const spd = Math.hypot(localPlayer.vx, localPlayer.vy);
-          audio.rotorGain.gain.setTargetAtTime(0.15 + Math.min(0.14, spd * 0.012), audio.ctx.currentTime, 0.18);
+          const now = audio.ctx.currentTime;
+          const spin = 1 + Math.min(0.22, spd * 0.01);
+          audio.rotorGain.gain.setTargetAtTime(0.24 + Math.min(0.08, spd * 0.006), now, 0.25);
+          if (audio.rotorRate) audio.rotorRate.setTargetAtTime(10.5 * spin, now, 0.3);
+          if (audio.turbine) {
+            audio.turbine[0].setTargetAtTime(740 * spin, now, 0.35);
+            audio.turbine[1].setTargetAtTime(1110 * spin, now, 0.35);
+            audio.turbine[2].setTargetAtTime(1680 * spin, now, 0.35);
+          }
         }
 
         camera.x += (localPlayer.x - camera.x) * Math.min(1, 0.2 * dt);
@@ -7233,8 +7741,8 @@
       for (let i = particles.length - 1; i >= 0; i--) {
         const p = particles[i];
         if (p.vx) p.x += p.vx * dt; if (p.vy) p.y += p.vy * dt;
-        if (p.type === 'SMOKE') {
-          p.radius += 0.18 * dt;
+        if (p.type === 'SMOKE' || p.type === 'GAS') {
+          p.radius += (p.type === 'GAS' ? 0.28 : 0.18) * dt;
           p.vx *= Math.pow(0.96, dt);
           p.vy *= Math.pow(0.96, dt);
         }
@@ -8874,6 +9382,12 @@
           ctx.beginPath();
           ctx.arc(p.x, p.y, 8 + (1 - a) * 10, 0, Math.PI * 2);
           ctx.fill();
+        } else if (p.type === 'GAS') {
+          const a = Math.max(0, p.life / p.maxLife) * 0.45;
+          ctx.fillStyle = `rgba(163, 230, 53, ${a})`;
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, p.radius || 8, 0, Math.PI * 2);
+          ctx.fill();
         } else if (p.type === 'SMOKE') {
           const a = Math.max(0, p.life / p.maxLife) * 0.38;
           ctx.fillStyle = `rgba(148, 163, 184, ${a})`;
@@ -8987,7 +9501,7 @@
 
     function gameLoop() {
       renderGame();
-      if (gameState === 'PLAYING' || gameState === 'DEAD' || gameState === 'PAUSED') requestAnimationFrame(gameLoop);
+      if (gameState === 'PLAYING' || gameState === 'DEAD' || gameState === 'PAUSED' || gameState === 'BRIEFING') requestAnimationFrame(gameLoop);
     }
 
     /* ========================================================================
@@ -8996,6 +9510,10 @@
     document.addEventListener('DOMContentLoaded', () => {
       // Start Menu Buttons
       document.getElementById('startBtn').addEventListener('click', (e) => { e.preventDefault(); startGame(); });
+      const tutorialSkip = document.getElementById('tutorialSkipBtn');
+      const tutorialNext = document.getElementById('tutorialNextBtn');
+      if (tutorialSkip) tutorialSkip.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); closeTutorial(); });
+      if (tutorialNext) tutorialNext.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); advanceTutorial(); });
       document.getElementById('menuSettingsBtn').addEventListener('click', (e) => { e.preventDefault(); openSettings('menu'); });
       document.getElementById('menuFeedbackBtn').addEventListener('click', (e) => { e.preventDefault(); openFeedback(); });
       document.getElementById('updateGameBtn').addEventListener('click', (e) => { e.preventDefault(); updateGame(); });
@@ -9009,6 +9527,7 @@
       document.getElementById('accountLogoutBtn').addEventListener('click', (e) => { e.preventDefault(); setSignedIn(''); });
       try { signedInName = localStorage.getItem('apacheCopterAccount') || ''; } catch (err) { signedInName = ''; }
       if (signedInName) applySavedColor(signedInName);
+      loadStoredZombieBest();
       refreshAccountUi();
       requestAnimationFrame(pollGamepad);
       const chatInput = document.getElementById('chatInput');
