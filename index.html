@@ -2104,9 +2104,15 @@
         clearPlacement();
         return;
       }
-      if (isZombies() && gameState === 'PLAYING' && e.button === 0 && towerPick) {
-        requestPlace(mouse.worldX, mouse.worldY);
-        return;
+      if (isZombies() && gameState === 'PLAYING' && e.button === 0) {
+        if (stallAt(mouse.worldX, mouse.worldY)) {
+          buyTowerFromShop(stallAt(mouse.worldX, mouse.worldY));
+          return;
+        }
+        if (towerPick) {
+          requestPlace(mouse.worldX, mouse.worldY);
+          return;
+        }
       }
       setMouseHeld(e.button, true);
       triggerPress(mouseButtonCode(e.button));
@@ -2353,6 +2359,7 @@
           setControlScheme('pad');
           openPadKeyboard(field);
         }         else if (hit) hit.click();
+        else if (playing && isZombies() && stallAt(mouse.worldX, mouse.worldY)) buyTowerFromShop(stallAt(mouse.worldX, mouse.worldY));
         else if (playing && isZombies() && towerPick) requestPlace(mouse.worldX, mouse.worldY);
         else if (playing) {
           padState.ownsGun = true;
@@ -3837,14 +3844,13 @@
       const ids = zombiePlayerIds();
       ids.forEach(grantZombieStartCash);
       const share = cash / ids.length;
-      const gemShare = gems / ids.length;
       ids.forEach(id => {
         zombie.purses[id] += share;
         zombie.earned[id] = (zombie.earned[id] || 0) + share;
       });
-      zombie.gems = (zombie.gems || 0) + gemShare;
+      zombie.gems = (zombie.gems || 0) + gems;
       localPlayer.score = Math.round(zombie.earned[localPlayer.id] || 0);
-      const gemText = gemShare >= 1 ? ' ◆' + Math.floor(gemShare) : '';
+      const gemText = gems >= 1 ? ' ◆' + Math.floor(gems) : '';
       floatingTexts.push({ x: x, y: y - 14, text: '+$' + Math.round(share) + gemText, color: '#fde68a', life: 40 });
       refreshZombieHud();
     }
@@ -3906,10 +3912,24 @@
 
     function stallAt(x, y) {
       const lane = zombieLane();
-      if (y < baseFrontY() + 12 || y > lane.bottom - 6 || x < lane.x || x > lane.right) return null;
+      const top = baseFrontY() + 14;
+      const bottom = Math.min(lane.bottom - 8, top + 108);
+      if (y < top || y > bottom || x < lane.x || x > lane.right) return null;
       const slotW = lane.w / TOWER_DEFS.length;
       const i = Math.floor((x - lane.x) / slotW);
       return TOWER_DEFS[i] ? TOWER_DEFS[i].id : null;
+    }
+
+    function tryFlyShop() {
+      if (!isZombies() || gameState !== 'PLAYING' || !zombie || zombie.over || localPlayer.hp <= 0) return;
+      if ((localPlayer.shopTouch || 0) > 0) {
+        localPlayer.shopTouch -= 1;
+        return;
+      }
+      const id = stallAt(localPlayer.x, localPlayer.y);
+      if (!id || (zombie.owned && zombie.owned[id])) return;
+      localPlayer.shopTouch = 45;
+      buyTowerFromShop(id);
     }
 
     function distToSeg(px, py, w) {
@@ -4478,7 +4498,7 @@
     function zombieSpawnSlot(slot) {
       const bounds = playBounds();
       const mid = (bounds.left + bounds.right) / 2;
-      return { x: mid + (slot - 1) * 90, y: zombieLane().bottom - 42 };
+      return { x: mid + (slot - 1) * 90, y: zombieLane().bottom - 20 };
     }
 
     function zombiePublic() {
@@ -5100,13 +5120,15 @@
         const owned = zombie && zombie.owned && zombie.owned[def.id];
         const picked = towerPick === def.id;
         ctx.fillStyle = picked ? 'rgba(250, 204, 21, 0.38)' : (owned ? 'rgba(22, 101, 52, 0.62)' : 'rgba(28, 25, 23, 0.78)');
-        ctx.fillRect(x + 3, baseFrontY() + 18, slotW - 6, 78);
+        ctx.fillRect(x + 3, baseFrontY() + 16, slotW - 6, 104);
         ctx.fillStyle = def.color;
-        ctx.fillRect(x + slotW / 2 - 7, baseFrontY() + 26, 14, 14);
+        ctx.fillRect(x + slotW / 2 - 7, baseFrontY() + 28, 14, 14);
         ctx.fillStyle = '#f8fafc';
-        ctx.fillText(def.name, x + slotW / 2, baseFrontY() + 54);
+        ctx.fillText(def.name, x + slotW / 2, baseFrontY() + 58);
         ctx.fillStyle = owned ? '#86efac' : '#fde68a';
-        ctx.fillText(owned ? 'OWNED' : ('BUY ◆' + def.gems), x + slotW / 2, baseFrontY() + 68);
+        ctx.fillText(owned ? 'OWNED' : ('BUY ◆' + def.gems), x + slotW / 2, baseFrontY() + 74);
+        ctx.fillStyle = '#cbd5e1';
+        ctx.fillText(owned ? 'CLICK' : 'FLY OR CLICK', x + slotW / 2, baseFrontY() + 90);
       });
       ctx.strokeStyle = 'rgba(234, 179, 8, 0.45)';
       ctx.lineWidth = 4;
@@ -6613,9 +6635,21 @@
         localPlayer.x += localPlayer.vx * dt; localPlayer.y += localPlayer.vy * dt;
 
         const bounds = playBounds();
-        localPlayer.x = Math.max(bounds.left, Math.min(bounds.right, localPlayer.x));
-        localPlayer.y = Math.max(bounds.top, Math.min(bounds.bottom, localPlayer.y));
+        let minX = bounds.left;
+        let maxX = bounds.right;
+        let maxY = bounds.bottom;
+        if (isZombies()) {
+          const lane = zombieLane();
+          maxY = lane.bottom - 12;
+          if (localPlayer.y > baseFrontY() - 20) {
+            minX = lane.x + 18;
+            maxX = lane.right - 18;
+          }
+        }
+        localPlayer.x = Math.max(minX, Math.min(maxX, localPlayer.x));
+        localPlayer.y = Math.max(bounds.top, Math.min(maxY, localPlayer.y));
         pushOutOfObstacles(localPlayer, 32);
+        if (isZombies()) tryFlyShop();
 
         mouse.worldX = (mouse.screenX - canvas.width / 2) / currentZoom + camera.x;
         mouse.worldY = (mouse.screenY - canvas.height / 2) / currentZoom + camera.y;
