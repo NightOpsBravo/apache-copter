@@ -1525,7 +1525,7 @@
     }
 
     const FEEDBACK_URL = 'https://ntfy.sh/apache-copter-feedback-tatum-4c91';
-    const GAME_VERSION = 4;
+    const GAME_VERSION = 5;
     const LIVE_URL = 'https://nightopsbravo.github.io/apache-copter/';
     let signedInName = '';
     let accountZombieBest = { wave: 0, score: 0 };
@@ -3804,16 +3804,16 @@
 
     function zombieBounty(type) {
       return ({
-        ZOMBIE_WALKER: { cash: 4, gems: 0.4 },
-        ZOMBIE_CRAWLER: { cash: 4, gems: 0.28 },
-        ZOMBIE_RUNNER: { cash: 6, gems: 0.45 },
-        ZOMBIE_SPITTER: { cash: 8, gems: 0.85 },
-        ZOMBIE_BRUTE: { cash: 16, gems: 1.8 },
-        ZOMBIE_BLOATER: { cash: 10, gems: 1.15 },
-        ZOMBIE_SCREAMER: { cash: 8, gems: 0.9 },
-        ZOMBIE_LEAPER: { cash: 10, gems: 1 },
-        ZOMBIE_JUGGERNAUT: { cash: 28, gems: 3.2 }
-      })[type] || { cash: 12, gems: 0 };
+        ZOMBIE_WALKER: { cash: 8, gems: 0.4 },
+        ZOMBIE_CRAWLER: { cash: 8, gems: 0.28 },
+        ZOMBIE_RUNNER: { cash: 12, gems: 0.45 },
+        ZOMBIE_SPITTER: { cash: 16, gems: 0.85 },
+        ZOMBIE_BRUTE: { cash: 32, gems: 1.8 },
+        ZOMBIE_BLOATER: { cash: 20, gems: 1.15 },
+        ZOMBIE_SCREAMER: { cash: 16, gems: 0.9 },
+        ZOMBIE_LEAPER: { cash: 20, gems: 1 },
+        ZOMBIE_JUGGERNAUT: { cash: 56, gems: 3.2 }
+      })[type] || { cash: 24, gems: 0 };
     }
 
     const ZOMBIE_START_CASH = 80;
@@ -4747,7 +4747,7 @@
         const calls = ['CONTACT NORTH', 'THEY BROKE THE TREE LINE', 'HOLD THE WIRE', 'STAY AIRBORNE', 'DO NOT LET THEM IN'];
         floatingTexts.push({ x: localPlayer.x, y: localPlayer.y - 48, text: 'NIGHT ' + zombie.wave + ' · ' + calls[zombie.wave % calls.length], color: '#bef264', life: 90 });
         reviveDownedPilot();
-        if (isHost) grantZombiePay((3 + zombie.wave) * 2, 1 + (zombie.wave % 2 === 0 ? 1 : 0), localPlayer.x, localPlayer.y - 24);
+        if (isHost) grantZombiePay((3 + zombie.wave) * 4, 1 + (zombie.wave % 2 === 0 ? 1 : 0), localPlayer.x, localPlayer.y - 24);
       }
       refreshZombieHud();
     }
