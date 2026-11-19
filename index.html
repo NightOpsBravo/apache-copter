@@ -1391,6 +1391,9 @@
       if (isZombies()) {
         if (code === binds.map) toggleTacticalMap();
         if (code === binds.chat) openChat();
+        for (let i = 0; i < 10; i++) {
+          if (code === binds['upgrade' + i]) selectZombieHotkey(i);
+        }
         return;
       }
       const modalOpen = !!document.querySelector('.modal-overlay.active');
@@ -1531,6 +1534,9 @@
     const WALL_REACH = 130;
     const WALL_COST = 10;
     const WALL_MAX = 12;
+    const WIRE_BUY = 5;
+    const WIRE_PLACE = 20;
+    const WIRE_MAX = 6;
 
     function accountKey(name) {
       return String(name || '').trim().toLowerCase();
@@ -2038,6 +2044,8 @@
       delete remotePlayers[id];
       if (zombie && zombie.purses) delete zombie.purses[id];
       if (zombie && zombie.earned) delete zombie.earned[id];
+      if (zombie && zombie.gemsBy) delete zombie.gemsBy[id];
+      if (zombie && zombie.ownedBy) delete zombie.ownedBy[id];
       dropMissilesOn(id);
       if (lockedTargetId === id) {
         lockedTargetId = null;
@@ -3183,7 +3191,8 @@
         else if (msg.type === 'ZOMBIE_LOST' && !isHost) {
           finishZombieRun(msg.reason || 'The run is over.', true);
         }
-        else if (msg.type === 'TOWER_SHOP' && isHost) hostUnlockTower(msg.id);
+        else if (msg.type === 'TOWER_SHOP' && isHost) hostUnlockTower(msg.id, msg.buyerId);
+        else if (msg.type === 'PLACE_WIRE' && isHost) placeWire(msg.x1, msg.y1, msg.x2, msg.y2, msg.buyerId);
         else if (msg.type === 'PLACE_TOWER' && isHost) placeTower(msg.x, msg.y, msg.kind, msg.buyerId);
         else if (msg.type === 'PLACE_WALL' && isHost) placeWall(msg.x1, msg.y1, msg.x2, msg.y2, msg.buyerId);
         else if (msg.type === 'TOWER_BLAST' && !isHost) createExplosion(msg.x, msg.y, msg.radius || 30, 0, 'tower');
@@ -3795,15 +3804,15 @@
 
     function zombieBounty(type) {
       return ({
-        ZOMBIE_WALKER: { cash: 2, gems: 0.12 },
-        ZOMBIE_CRAWLER: { cash: 2, gems: 0.08 },
-        ZOMBIE_RUNNER: { cash: 3, gems: 0.14 },
-        ZOMBIE_SPITTER: { cash: 4, gems: 0.28 },
-        ZOMBIE_BRUTE: { cash: 8, gems: 0.7 },
-        ZOMBIE_BLOATER: { cash: 5, gems: 0.4 },
-        ZOMBIE_SCREAMER: { cash: 4, gems: 0.32 },
-        ZOMBIE_LEAPER: { cash: 5, gems: 0.36 },
-        ZOMBIE_JUGGERNAUT: { cash: 14, gems: 1.4 }
+        ZOMBIE_WALKER: { cash: 2, gems: 0.4 },
+        ZOMBIE_CRAWLER: { cash: 2, gems: 0.28 },
+        ZOMBIE_RUNNER: { cash: 3, gems: 0.45 },
+        ZOMBIE_SPITTER: { cash: 4, gems: 0.85 },
+        ZOMBIE_BRUTE: { cash: 8, gems: 1.8 },
+        ZOMBIE_BLOATER: { cash: 5, gems: 1.15 },
+        ZOMBIE_SCREAMER: { cash: 4, gems: 0.9 },
+        ZOMBIE_LEAPER: { cash: 5, gems: 1 },
+        ZOMBIE_JUGGERNAUT: { cash: 14, gems: 3.2 }
       })[type] || { cash: 6, gems: 0 };
     }
 
@@ -3820,8 +3829,31 @@
       if (!zombie || !id) return;
       if (!zombie.purses) zombie.purses = {};
       if (!zombie.earned) zombie.earned = {};
+      if (!zombie.gemsBy) zombie.gemsBy = {};
+      if (!zombie.ownedBy) zombie.ownedBy = {};
       if (zombie.purses[id] == null) zombie.purses[id] = ZOMBIE_START_CASH;
       if (zombie.earned[id] == null) zombie.earned[id] = 0;
+      if (zombie.gemsBy[id] == null) zombie.gemsBy[id] = 0;
+      if (!zombie.ownedBy[id]) zombie.ownedBy[id] = { GUN: true };
+    }
+
+    function myGems() {
+      if (!zombie || !zombie.gemsBy) return zombie && zombie.gems || 0;
+      return zombie.gemsBy[localPlayer.id] || 0;
+    }
+
+    function playerOwns(playerId, kind) {
+      const bag = zombie && zombie.ownedBy && zombie.ownedBy[playerId || localPlayer.id];
+      return !!(bag && bag[kind]);
+    }
+
+    function spendGems(playerId, amount) {
+      const id = playerId || localPlayer.id;
+      if (zombiePlayerIds().indexOf(id) < 0) return false;
+      grantZombieStartCash(id);
+      if (zombie.gemsBy[id] < amount) return false;
+      zombie.gemsBy[id] -= amount;
+      return true;
     }
 
     function myZombieCash() {
@@ -3848,7 +3880,7 @@
         zombie.purses[id] += share;
         zombie.earned[id] = (zombie.earned[id] || 0) + share;
       });
-      zombie.gems = (zombie.gems || 0) + gems;
+      ids.forEach(id => { zombie.gemsBy[id] = (zombie.gemsBy[id] || 0) + gems; });
       localPlayer.score = Math.round(zombie.earned[localPlayer.id] || 0);
       const gemText = gems >= 1 ? ' ◆' + Math.floor(gems) : '';
       floatingTexts.push({ x: x, y: y - 14, text: '+$' + Math.round(share) + gemText, color: '#fde68a', life: 40 });
@@ -3868,16 +3900,29 @@
       if (u.hp <= 0) payZombieKill(u);
     }
 
-    function hostUnlockTower(id) {
+    function hostUnlockTower(id, buyerId) {
       if (!isHost || !zombie || zombie.over) return false;
+      const buyer = buyerId || localPlayer.id;
+      grantZombieStartCash(buyer);
+      if (zombiePlayerIds().indexOf(buyer) < 0 || playerOwns(buyer, id)) return false;
+      if (id === 'WIRE') {
+        if ((zombie.gemsBy[buyer] || 0) < WIRE_BUY) {
+          floatingTexts.push({ x: localPlayer.x, y: localPlayer.y - 22, text: 'NEED ' + WIRE_BUY + ' GEMS', color: '#fca5a5', life: 40 });
+          return false;
+        }
+        zombie.gemsBy[buyer] -= WIRE_BUY;
+        zombie.ownedBy[buyer].WIRE = true;
+        refreshZombieHud();
+        return true;
+      }
       const def = towerDef(id);
-      if (!def || (zombie.owned && zombie.owned[id])) return false;
-      if ((zombie.gems || 0) < def.gems) {
+      if (!def) return false;
+      if ((zombie.gemsBy[buyer] || 0) < def.gems) {
         floatingTexts.push({ x: localPlayer.x, y: localPlayer.y - 22, text: 'NEED ' + def.gems + ' GEMS', color: '#fca5a5', life: 40 });
         return false;
       }
-      zombie.gems -= def.gems;
-      zombie.owned[id] = true;
+      zombie.gemsBy[buyer] -= def.gems;
+      zombie.ownedBy[buyer][id] = true;
       refreshZombieHud();
       return true;
     }
@@ -3889,21 +3934,39 @@
     }
 
     function requestTower(id) {
-      if (!towerDef(id) || !(zombie && zombie.owned && zombie.owned[id])) return;
+      if (!towerDef(id) || !playerOwns(localPlayer.id, id)) return;
       if (towerPick === id) { clearPlacement(); return; }
       towerPick = id;
       wallAnchor = null;
       refreshTowerShop();
     }
 
-    function buyTowerFromShop(id) {
-      if (!towerDef(id)) return;
-      if (zombie && zombie.owned && zombie.owned[id]) {
-        requestTower(id);
+    function selectZombieHotkey(index) {
+      if (!isZombies() || !zombie) return;
+      if (index === 9) { selectWall(); return; }
+      if (index === 0) { selectWire(); return; }
+      const def = TOWER_DEFS[index - 1];
+      if (!def) return;
+      if (!playerOwns(localPlayer.id, def.id)) {
+        floatingTexts.push({ x: localPlayer.x, y: localPlayer.y - 24, text: 'BUY ' + def.name + ' FIRST', color: '#fca5a5', life: 36 });
         return;
       }
-      if (!isHost) broadcast({ type: 'TOWER_SHOP', id: id });
-      else if (hostUnlockTower(id)) {
+      requestTower(def.id);
+    }
+
+    function shopItems() {
+      return [{ id: 'WIRE', name: 'WIRE', gems: WIRE_BUY, color: '#fca5a5' }].concat(TOWER_DEFS);
+    }
+
+    function buyTowerFromShop(id) {
+      if (id !== 'WIRE' && !towerDef(id)) return;
+      if (playerOwns(localPlayer.id, id)) {
+        if (id === 'WIRE') selectWire();
+        else requestTower(id);
+        return;
+      }
+      if (!isHost) broadcast({ type: 'TOWER_SHOP', id: id, buyerId: localPlayer.id });
+      else if (hostUnlockTower(id, localPlayer.id)) {
         towerPick = id;
         wallAnchor = null;
       }
@@ -3915,9 +3978,10 @@
       const top = baseFrontY() + 14;
       const bottom = Math.min(lane.bottom - 8, top + 108);
       if (y < top || y > bottom || x < lane.x || x > lane.right) return null;
-      const slotW = lane.w / TOWER_DEFS.length;
+      const items = shopItems();
+      const slotW = lane.w / items.length;
       const i = Math.floor((x - lane.x) / slotW);
-      return TOWER_DEFS[i] ? TOWER_DEFS[i].id : null;
+      return items[i] ? items[i].id : null;
     }
 
     function tryFlyShop() {
@@ -3927,7 +3991,7 @@
         return;
       }
       const id = stallAt(localPlayer.x, localPlayer.y);
-      if (!id || (zombie.owned && zombie.owned[id])) return;
+      if (!id || playerOwns(localPlayer.id, id)) return;
       localPlayer.shopTouch = 45;
       buyTowerFromShop(id);
     }
@@ -3952,6 +4016,22 @@
       towerPick = 'WALL';
       wallAnchor = null;
       refreshTowerShop();
+    }
+
+    function selectWire() {
+      if (!playerOwns(localPlayer.id, 'WIRE')) {
+        floatingTexts.push({ x: localPlayer.x, y: localPlayer.y - 24, text: 'BUY WIRE FIRST', color: '#fca5a5', life: 36 });
+        return;
+      }
+      if (towerPick === 'WIRE') { clearPlacement(); return; }
+      towerPick = 'WIRE';
+      wallAnchor = null;
+      refreshTowerShop();
+    }
+
+    function wireCount(playerId) {
+      const id = playerId || localPlayer.id;
+      return (zombie && zombie.wires || []).filter(w => w.ownerId === id).length;
     }
 
     function wallPointOk(x, y) {
@@ -4004,6 +4084,56 @@
       refreshZombieHud();
     }
 
+    function placeWirePoint(x, y) {
+      if (!wallPointOk(x, y)) return;
+      if (!wallAnchor) {
+        wallAnchor = { x: x, y: y };
+        floatingTexts.push({ x: x, y: y - 16, text: 'WIRE START', color: '#fca5a5', life: 28 });
+        return;
+      }
+      const dist = Math.hypot(x - wallAnchor.x, y - wallAnchor.y);
+      if (dist < 28) return;
+      if (dist > WALL_REACH) {
+        floatingTexts.push({ x: x, y: y - 16, text: 'TOO FAR', color: '#fca5a5', life: 32 });
+        return;
+      }
+      if (wireCount(localPlayer.id) >= WIRE_MAX) {
+        floatingTexts.push({ x: x, y: y - 16, text: 'WIRE LIMIT ' + WIRE_MAX, color: '#fca5a5', life: 36 });
+        return;
+      }
+      const seg = { x1: wallAnchor.x, y1: wallAnchor.y, x2: x, y2: y };
+      wallAnchor = null;
+      if (!isHost) broadcast({ type: 'PLACE_WIRE', x1: seg.x1, y1: seg.y1, x2: seg.x2, y2: seg.y2, buyerId: localPlayer.id });
+      else placeWire(seg.x1, seg.y1, seg.x2, seg.y2, localPlayer.id);
+    }
+
+    function placeWire(x1, y1, x2, y2, buyerId) {
+      if (!isHost || !zombie || zombie.over) return;
+      const buyer = buyerId || localPlayer.id;
+      if (!wallPointOk(x1, y1) || !wallPointOk(x2, y2)) return;
+      const dist = Math.hypot(x2 - x1, y2 - y1);
+      if (dist < 28 || dist > WALL_REACH + 8) return;
+      if (zombiePlayerIds().indexOf(buyer) < 0) return;
+      zombie.wires = zombie.wires || [];
+      const midX = (x1 + x2) / 2;
+      const midY = (y1 + y2) / 2;
+      if (wireCount(buyer) >= WIRE_MAX) {
+        floatingTexts.push({ x: midX, y: midY - 16, text: 'WIRE LIMIT ' + WIRE_MAX, color: '#fca5a5', life: 36 });
+        return;
+      }
+      if (zombie.wires.some(w => distToSeg(midX, midY, w).d < 12)) return;
+      if (!playerOwns(buyer, 'WIRE')) {
+        floatingTexts.push({ x: midX, y: midY - 16, text: 'BUY WIRE FIRST', color: '#fca5a5', life: 36 });
+        return;
+      }
+      if (!spendZombieCash(buyer, WIRE_PLACE)) {
+        floatingTexts.push({ x: midX, y: midY - 16, text: 'NEED $' + WIRE_PLACE, color: '#fca5a5', life: 36 });
+        return;
+      }
+      zombie.wires.push({ id: 'wr_' + Date.now() + '_' + Math.floor(Math.random() * 999), x1: x1, y1: y1, x2: x2, y2: y2, ownerId: buyer });
+      refreshZombieHud();
+    }
+
     function nearestTower(x, y, range) {
       let best = null;
       let bestD = range;
@@ -4045,6 +4175,7 @@
       const stall = stallAt(x, y);
       if (stall) { buyTowerFromShop(stall); return; }
       if (towerPick === 'WALL') { placeWallPoint(x, y); return; }
+      if (towerPick === 'WIRE') { placeWirePoint(x, y); return; }
       if (!isHost) broadcast({ type: 'PLACE_TOWER', x: x, y: y, kind: towerPick, buyerId: localPlayer.id });
       else placeTower(x, y, towerPick, localPlayer.id);
     }
@@ -4053,7 +4184,7 @@
       if (!isHost || !zombie || zombie.over) return;
       const def = towerDef(kind);
       const lane = zombieLane();
-      if (!def || !zombie.owned || !zombie.owned[kind]) {
+      if (!def || !playerOwns(buyerId || localPlayer.id, kind)) {
         if (def) floatingTexts.push({ x: x, y: y - 16, text: 'BUY ' + def.name + ' FIRST', color: '#fca5a5', life: 36 });
         return;
       }
@@ -4167,21 +4298,27 @@
       row.classList.toggle('hidden', !show || gameState !== 'PLAYING');
       if (!show) return;
       const wallCount = standingWalls();
-      const sig = TOWER_DEFS.map(d => (zombie.owned && zombie.owned[d.id] ? '1' : '0')).join('') + '|' + towerPick + (wallAnchor ? 'A' : '') + '|' + wallCount;
+      const wires = wireCount(localPlayer.id);
+      const ownsWire = playerOwns(localPlayer.id, 'WIRE');
+      const sig = TOWER_DEFS.map(d => (playerOwns(localPlayer.id, d.id) ? '1' : '0')).join('') + (ownsWire ? 'W' : '') + '|' + towerPick + (wallAnchor ? 'A' : '') + '|' + wallCount + '|' + wires + '|' + Math.floor(myGems());
       if (row.dataset.sig === sig && row.childElementCount) return;
       row.dataset.sig = sig;
       const heli = '<button type="button" data-tower="HELI" class="shrink-0 px-2 py-1 rounded border text-[9px] leading-tight font-bold ' + (!towerPick ? 'border-sky-300 bg-sky-500/20 text-sky-100' : 'border-stone-600 text-stone-200') + '" style="min-width:78px">HELI GUN<br>DESELECT</button>';
-      const ownedTowers = TOWER_DEFS.filter(def => zombie.owned && zombie.owned[def.id]);
-      row.innerHTML = heli + ownedTowers.map(def => {
+      const wallBtn = '<button type="button" data-tower="WALL" class="shrink-0 px-2 py-1 rounded border text-[9px] leading-tight font-bold ' + (towerPick === 'WALL' ? 'border-amber-300 bg-amber-500/20 text-amber-100' : 'border-orange-900 text-orange-200') + '" style="min-width:78px">0 WALL ' + wallCount + '/' + WALL_MAX + '<br>$' + WALL_COST + ' / STRETCH</button>';
+      const wireBtn = ownsWire ? '<button type="button" data-tower="WIRE" class="shrink-0 px-2 py-1 rounded border text-[9px] leading-tight font-bold ' + (towerPick === 'WIRE' ? 'border-rose-300 bg-rose-500/20 text-rose-100' : 'border-rose-900 text-rose-200') + '" style="min-width:78px">1 WIRE ' + wires + '/' + WIRE_MAX + '<br>$' + WIRE_PLACE + ' / STRETCH</button>' : '';
+      const ownedTowers = TOWER_DEFS.filter(def => playerOwns(localPlayer.id, def.id));
+      row.innerHTML = wallBtn + wireBtn + ownedTowers.map(def => {
         const picked = towerPick === def.id;
-        return '<button type="button" data-tower="' + def.id + '" class="shrink-0 px-2 py-1 rounded border text-[9px] leading-tight font-bold ' + (picked ? 'border-amber-300 bg-amber-500/20 text-amber-100' : 'border-stone-600 text-stone-200') + '" style="min-width:78px">' + def.name + '<br>PLACE $' + def.cost + '</button>';
-      }).join('') + '<button type="button" data-tower="WALL" class="shrink-0 px-2 py-1 rounded border text-[9px] leading-tight font-bold ' + (towerPick === 'WALL' ? 'border-amber-300 bg-amber-500/20 text-amber-100' : 'border-orange-900 text-orange-200') + '" style="min-width:78px">WALL ' + wallCount + '/' + WALL_MAX + '<br>$' + WALL_COST + ' / STRETCH</button>';
+        const key = TOWER_DEFS.indexOf(def) + 2;
+        return '<button type="button" data-tower="' + def.id + '" class="shrink-0 px-2 py-1 rounded border text-[9px] leading-tight font-bold ' + (picked ? 'border-amber-300 bg-amber-500/20 text-amber-100' : 'border-stone-600 text-stone-200') + '" style="min-width:78px">' + key + ' ' + def.name + '<br>PLACE $' + def.cost + '</button>';
+      }).join('') + heli;
       row.querySelectorAll('button').forEach(btn => {
         btn.addEventListener('click', (e) => {
           e.stopPropagation();
           const id = btn.getAttribute('data-tower');
           if (id === 'HELI') clearPlacement();
           else if (id === 'WALL') selectWall();
+          else if (id === 'WIRE') selectWire();
           else requestTower(id);
         });
       });
@@ -4387,6 +4524,34 @@
 
     function drawWalls() {
       if (!zombie) return;
+      (zombie.wires || []).forEach(w => {
+        ctx.save();
+        ctx.strokeStyle = '#7f1d1d';
+        ctx.lineWidth = 2;
+        const dx = w.x2 - w.x1;
+        const dy = w.y2 - w.y1;
+        const len = Math.hypot(dx, dy) || 1;
+        const steps = Math.max(2, Math.floor(len / 10));
+        ctx.beginPath();
+        for (let i = 0; i <= steps; i++) {
+          const t = i / steps;
+          const px = w.x1 + dx * t;
+          const py = w.y1 + dy * t;
+          const nx = -dy / len;
+          const ny = dx / len;
+          const jag = (i % 2 ? 4 : -4);
+          if (i === 0) ctx.moveTo(px, py);
+          else ctx.lineTo(px + nx * jag, py + ny * jag);
+        }
+        ctx.stroke();
+        ctx.strokeStyle = '#fecaca';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(w.x1, w.y1);
+        ctx.lineTo(w.x2, w.y2);
+        ctx.stroke();
+        ctx.restore();
+      });
       (zombie.walls || []).forEach(w => {
         if (!(w.hp > 0)) return;
         const ratio = Math.max(0.15, w.hp / (w.maxHp || 90));
@@ -4435,7 +4600,9 @@
       ctx.beginPath();
       ctx.arc(wallAnchor.x, wallAnchor.y, WALL_REACH, 0, Math.PI * 2);
       ctx.stroke();
-      ctx.strokeStyle = (d <= WALL_REACH && d >= 28) ? 'rgba(251, 191, 36, 0.95)' : 'rgba(248, 113, 113, 0.9)';
+      ctx.strokeStyle = towerPick === 'WIRE'
+        ? ((d <= WALL_REACH && d >= 28) ? 'rgba(248, 113, 113, 0.95)' : 'rgba(127, 29, 29, 0.9)')
+        : ((d <= WALL_REACH && d >= 28) ? 'rgba(251, 191, 36, 0.95)' : 'rgba(248, 113, 113, 0.9)');
       ctx.lineWidth = 8;
       ctx.setLineDash([10, 7]);
       ctx.beginPath();
@@ -4507,9 +4674,9 @@
         wave: zombie.wave, leftToSpawn: zombie.leftToSpawn, breakTimer: zombie.breakTimer,
         baseHp: zombie.baseHp, baseMax: zombie.baseMax, over: zombie.over,
         wrecks: zombie.wrecks || [], globs: zombie.globs || [],
-        cash: myZombieCash(), gems: zombie.gems || 0, owned: zombie.owned || { GUN: true },
+        cash: myZombieCash(), gemsBy: zombie.gemsBy || {}, ownedBy: zombie.ownedBy || {},
         purses: zombie.purses || {}, earned: zombie.earned || {},
-        towers: zombie.towers || [], walls: zombie.walls || [], score: localPlayer.score || 0
+        towers: zombie.towers || [], walls: zombie.walls || [], wires: zombie.wires || [], score: localPlayer.score || 0
       };
     }
 
@@ -4527,7 +4694,7 @@
       const cash = document.getElementById('hudZombieCash');
       const gems = document.getElementById('hudZombieGems');
       if (cash) cash.textContent = Math.floor(myZombieCash());
-      if (gems) gems.textContent = Math.floor(zombie.gems || 0);
+      if (gems) gems.textContent = Math.floor(myGems());
       refreshTowerShop();
       const infected = document.getElementById('hudInfection');
       if (infected) infected.classList.toggle('hidden', !(localPlayer.infection > 0));
@@ -4549,10 +4716,11 @@
       if (state.earned) zombie.earned = state.earned;
       if (state.earned && state.earned[localPlayer.id] != null) localPlayer.score = Math.round(state.earned[localPlayer.id]);
       else if (state.cash != null) zombie.cash = state.cash;
-      if (state.gems != null) zombie.gems = state.gems;
-      if (state.owned) zombie.owned = state.owned;
+      if (state.gemsBy) zombie.gemsBy = state.gemsBy;
+      if (state.ownedBy) zombie.ownedBy = state.ownedBy;
       if (state.towers) zombie.towers = state.towers;
       if (state.walls) zombie.walls = state.walls;
+      if (state.wires) zombie.wires = state.wires;
       if (zombie.wave !== prev) noteZombieWave();
       refreshZombieHud();
     }
@@ -4566,7 +4734,7 @@
         const calls = ['CONTACT NORTH', 'THEY BROKE THE TREE LINE', 'HOLD THE WIRE', 'STAY AIRBORNE', 'DO NOT LET THEM IN'];
         floatingTexts.push({ x: localPlayer.x, y: localPlayer.y - 48, text: 'NIGHT ' + zombie.wave + ' · ' + calls[zombie.wave % calls.length], color: '#bef264', life: 90 });
         reviveDownedPilot();
-        if (isHost) grantZombiePay(3 + zombie.wave, zombie.wave % 4 === 0 ? 1 : 0, localPlayer.x, localPlayer.y - 24);
+        if (isHost) grantZombiePay(3 + zombie.wave, 1 + (zombie.wave % 2 === 0 ? 1 : 0), localPlayer.x, localPlayer.y - 24);
       }
       refreshZombieHud();
     }
@@ -4661,10 +4829,17 @@
       wallAnchor = null;
       const purses = {};
       const earned = {};
-      purses[localPlayer.id] = ZOMBIE_START_CASH;
-      earned[localPlayer.id] = 0;
-      Object.keys(remotePlayers).forEach(id => { purses[id] = ZOMBIE_START_CASH; earned[id] = 0; });
-      zombie = { wave: 1, leftToSpawn: 8, spawnTimer: 40, breakTimer: 0, baseHp: 800, baseMax: 800, over: false, seenWave: 0, bestScore: bestScore, bestWave: bestWave, globs: [], cash: ZOMBIE_START_CASH, gems: 0, owned: { GUN: true }, towers: [], walls: [], purses: purses, earned: earned };
+      const gemsBy = {};
+      const ownedBy = {};
+      const seedLoadout = (id) => {
+        purses[id] = ZOMBIE_START_CASH;
+        earned[id] = 0;
+        gemsBy[id] = 0;
+        ownedBy[id] = { GUN: true };
+      };
+      seedLoadout(localPlayer.id);
+      Object.keys(remotePlayers).forEach(seedLoadout);
+      zombie = { wave: 1, leftToSpawn: 8, spawnTimer: 40, breakTimer: 0, baseHp: 800, baseMax: 800, over: false, seenWave: 0, bestScore: bestScore, bestWave: bestWave, globs: [], cash: ZOMBIE_START_CASH, gemsBy: gemsBy, ownedBy: ownedBy, towers: [], walls: [], wires: [], purses: purses, earned: earned };
       zombie.wrecks = [0.32, 0.52, 0.72].map((t, i) => ({
         x: lane.x + lane.w * (i % 2 ? 0.3 : 0.7),
         y: lane.y + 80 + (lane.h - 280) * t
@@ -4866,8 +5041,12 @@
           hurtTower(marked.tower, (u.bite || 8) * (u.type === 'ZOMBIE_BRUTE' || u.type === 'ZOMBIE_JUGGERNAUT' ? 1.6 : 1));
         }
       } else {
-        u.x = nextX;
-        u.y = nextY;
+        let drag = 1;
+        (zombie.wires || []).forEach(w => {
+          if (distToSeg(u.x, u.y, w).d < 20 || distToSeg(nextX, nextY, w).d < 20) drag = 0.32;
+        });
+        u.x += (nextX - u.x) * drag;
+        u.y += (nextY - u.y) * drag;
       }
       if (u.x < bounds.left) u.x = bounds.left;
       if (u.x > bounds.right) u.x = bounds.right;
@@ -5113,11 +5292,12 @@
       ctx.font = 'bold 16px Orbitron';
       ctx.textAlign = 'center';
       ctx.fillText('SHOP — BUY TOWERS WITH GEMS', (lane.x + lane.right) / 2, lane.bottom - 18);
-      const slotW = lane.w / TOWER_DEFS.length;
+      const items = shopItems();
+      const slotW = lane.w / items.length;
       ctx.font = 'bold 9px Orbitron';
-      TOWER_DEFS.forEach((def, i) => {
+      items.forEach((def, i) => {
         const x = lane.x + slotW * i;
-        const owned = zombie && zombie.owned && zombie.owned[def.id];
+        const owned = playerOwns(localPlayer.id, def.id);
         const picked = towerPick === def.id;
         ctx.fillStyle = picked ? 'rgba(250, 204, 21, 0.38)' : (owned ? 'rgba(22, 101, 52, 0.62)' : 'rgba(28, 25, 23, 0.78)');
         ctx.fillRect(x + 3, baseFrontY() + 16, slotW - 6, 104);
@@ -5126,7 +5306,7 @@
         ctx.fillStyle = '#f8fafc';
         ctx.fillText(def.name, x + slotW / 2, baseFrontY() + 58);
         ctx.fillStyle = owned ? '#86efac' : '#fde68a';
-        ctx.fillText(owned ? 'OWNED' : ('BUY ◆' + def.gems), x + slotW / 2, baseFrontY() + 74);
+        ctx.fillText(owned ? (def.id === 'WIRE' ? ('PLACE $' + WIRE_PLACE) : 'OWNED') : ('BUY ◆' + def.gems), x + slotW / 2, baseFrontY() + 74);
         ctx.fillStyle = '#cbd5e1';
         ctx.fillText(owned ? 'CLICK' : 'FLY OR CLICK', x + slotW / 2, baseFrontY() + 90);
       });
@@ -5459,7 +5639,7 @@
     function updateHUD() {
       const clsName = localPlayer.heliModel ? ` [${heliModelName(localPlayer.heliModel)}]` : (localPlayer.playerClass ? ` [${localPlayer.playerClass}]` : '');
       document.getElementById('hudLevel').innerText = isZombies() ? 'ZOMBIE DEFENSE' : `LVL ${localPlayer.level} APACHE${clsName}`;
-      const placing = !towerPick ? null : (towerPick === 'WALL' ? { name: wallAnchor ? 'WALL END' : 'WALL $10' } : towerDef(towerPick));
+      const placing = !towerPick ? null : (towerPick === 'WALL' ? { name: wallAnchor ? 'WALL END' : 'WALL $10' } : (towerPick === 'WIRE' ? { name: wallAnchor ? 'WIRE END' : 'BARBED WIRE' } : towerDef(towerPick)));
       document.getElementById('hudXP').innerText = isZombies() ? (placing ? ('PLACING ' + placing.name) : 'HELI GUN') : `${Math.floor(localPlayer.xp)} / ${localPlayer.xpToNext} XP`;
       document.getElementById('xpBarFill').style.width = isZombies() ? '0%' : `${Math.min(100, (localPlayer.xp / localPlayer.xpToNext) * 100)}%`;
       const maxHp = getStatVal('maxHp');
