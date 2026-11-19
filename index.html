@@ -2036,6 +2036,8 @@
     function removeRemotePlayer(id) {
       if (!id) return;
       delete remotePlayers[id];
+      if (zombie && zombie.purses) delete zombie.purses[id];
+      if (zombie && zombie.earned) delete zombie.earned[id];
       dropMissilesOn(id);
       if (lockedTargetId === id) {
         lockedTargetId = null;
@@ -3058,6 +3060,7 @@
         remotePlayers[msg.id] = Object.assign(remotePlayers[msg.id] || {}, {
           id: msg.id, name: msg.name, peer: conn.peer, hp: remotePlayers[msg.id] ? remotePlayers[msg.id].hp : 0
         });
+        if (isZombies() && zombie) grantZombieStartCash(msg.id);
         conn.send({
           type: 'INIT_WORLD',
           crates: crates,
@@ -3174,8 +3177,8 @@
           finishZombieRun(msg.reason || 'The run is over.', true);
         }
         else if (msg.type === 'TOWER_SHOP' && isHost) hostUnlockTower(msg.id);
-        else if (msg.type === 'PLACE_TOWER' && isHost) placeTower(msg.x, msg.y, msg.kind);
-        else if (msg.type === 'PLACE_WALL' && isHost) placeWall(msg.x1, msg.y1, msg.x2, msg.y2);
+        else if (msg.type === 'PLACE_TOWER' && isHost) placeTower(msg.x, msg.y, msg.kind, msg.buyerId);
+        else if (msg.type === 'PLACE_WALL' && isHost) placeWall(msg.x1, msg.y1, msg.x2, msg.y2, msg.buyerId);
         else if (msg.type === 'TOWER_BLAST' && !isHost) createExplosion(msg.x, msg.y, msg.radius || 30, 0, 'tower');
         else if (msg.type === 'SPAWN_CRATES' && !isHost) {
           if (msg.crates) crates.push(...msg.crates);
@@ -3797,13 +3800,52 @@
       })[type] || { cash: 6, gems: 0 };
     }
 
+    const ZOMBIE_START_CASH = 80;
+
+    function zombiePlayerIds() {
+      const ids = [];
+      if (localPlayer && localPlayer.id) ids.push(localPlayer.id);
+      Object.keys(remotePlayers).forEach(id => { if (ids.indexOf(id) < 0) ids.push(id); });
+      return ids.length ? ids : [localPlayer.id];
+    }
+
+    function grantZombieStartCash(id) {
+      if (!zombie || !id) return;
+      if (!zombie.purses) zombie.purses = {};
+      if (!zombie.earned) zombie.earned = {};
+      if (zombie.purses[id] == null) zombie.purses[id] = ZOMBIE_START_CASH;
+      if (zombie.earned[id] == null) zombie.earned[id] = 0;
+    }
+
+    function myZombieCash() {
+      if (!zombie || !zombie.purses) return zombie && zombie.cash || 0;
+      const mine = zombie.purses[localPlayer.id];
+      return mine == null ? 0 : mine;
+    }
+
+    function spendZombieCash(playerId, amount) {
+      const id = playerId || localPlayer.id;
+      if (zombiePlayerIds().indexOf(id) < 0) return false;
+      grantZombieStartCash(id);
+      if (zombie.purses[id] < amount) return false;
+      zombie.purses[id] -= amount;
+      return true;
+    }
+
     function grantZombiePay(cash, gems, x, y) {
       if (!isHost || !zombie) return;
-      zombie.cash = (zombie.cash || 0) + cash;
-      zombie.gems = (zombie.gems || 0) + gems;
-      localPlayer.score = (localPlayer.score || 0) + Math.round(cash);
-      const gemText = gems >= 1 ? ' ◆' + Math.floor(gems) : '';
-      floatingTexts.push({ x: x, y: y - 14, text: '+$' + Math.round(cash) + gemText, color: '#fde68a', life: 40 });
+      const ids = zombiePlayerIds();
+      ids.forEach(grantZombieStartCash);
+      const share = cash / ids.length;
+      const gemShare = gems / ids.length;
+      ids.forEach(id => {
+        zombie.purses[id] += share;
+        zombie.earned[id] = (zombie.earned[id] || 0) + share;
+      });
+      zombie.gems = (zombie.gems || 0) + gemShare;
+      localPlayer.score = Math.round(zombie.earned[localPlayer.id] || 0);
+      const gemText = gemShare >= 1 ? ' ◆' + Math.floor(gemShare) : '';
+      floatingTexts.push({ x: x, y: y - 14, text: '+$' + Math.round(share) + gemText, color: '#fde68a', life: 40 });
       refreshZombieHud();
     }
 
@@ -3916,11 +3958,11 @@
       }
       const seg = { x1: wallAnchor.x, y1: wallAnchor.y, x2: x, y2: y };
       wallAnchor = null;
-      if (!isHost) broadcast({ type: 'PLACE_WALL', x1: seg.x1, y1: seg.y1, x2: seg.x2, y2: seg.y2 });
-      else placeWall(seg.x1, seg.y1, seg.x2, seg.y2);
+      if (!isHost) broadcast({ type: 'PLACE_WALL', x1: seg.x1, y1: seg.y1, x2: seg.x2, y2: seg.y2, buyerId: localPlayer.id });
+      else placeWall(seg.x1, seg.y1, seg.x2, seg.y2, localPlayer.id);
     }
 
-    function placeWall(x1, y1, x2, y2) {
+    function placeWall(x1, y1, x2, y2, buyerId) {
       if (!isHost || !zombie || zombie.over) return;
       if (!wallPointOk(x1, y1) || !wallPointOk(x2, y2)) return;
       const dist = Math.hypot(x2 - x1, y2 - y1);
@@ -3934,11 +3976,10 @@
       const midY = (y1 + y2) / 2;
       if (zombie.walls.some(w => w.hp > 0 && distToSeg(midX, midY, w).d < 14)) return;
       if ((zombie.towers || []).some(t => t.hp > 0 && distToSeg(t.x, t.y, { x1: x1, y1: y1, x2: x2, y2: y2 }).d < 22)) return;
-      if ((zombie.cash || 0) < WALL_COST) {
+      if (!spendZombieCash(buyerId, WALL_COST)) {
         floatingTexts.push({ x: midX, y: midY - 16, text: 'NEED $' + WALL_COST, color: '#fca5a5', life: 36 });
         return;
       }
-      zombie.cash -= WALL_COST;
       zombie.walls.push({ id: 'wl_' + Date.now() + '_' + Math.floor(Math.random() * 999), x1: x1, y1: y1, x2: x2, y2: y2, hp: 90, maxHp: 90 });
       refreshZombieHud();
     }
@@ -3984,11 +4025,11 @@
       const stall = stallAt(x, y);
       if (stall) { buyTowerFromShop(stall); return; }
       if (towerPick === 'WALL') { placeWallPoint(x, y); return; }
-      if (!isHost) broadcast({ type: 'PLACE_TOWER', x: x, y: y, kind: towerPick });
-      else placeTower(x, y, towerPick);
+      if (!isHost) broadcast({ type: 'PLACE_TOWER', x: x, y: y, kind: towerPick, buyerId: localPlayer.id });
+      else placeTower(x, y, towerPick, localPlayer.id);
     }
 
-    function placeTower(x, y, kind) {
+    function placeTower(x, y, kind, buyerId) {
       if (!isHost || !zombie || zombie.over) return;
       const def = towerDef(kind);
       const lane = zombieLane();
@@ -4013,11 +4054,10 @@
         floatingTexts.push({ x: x, y: y - 16, text: 'BLOCKED', color: '#fca5a5', life: 28 });
         return;
       }
-      if ((zombie.cash || 0) < def.cost) {
+      if (!spendZombieCash(buyerId, def.cost)) {
         floatingTexts.push({ x: x, y: y - 16, text: 'NEED $' + def.cost, color: '#fca5a5', life: 36 });
         return;
       }
-      zombie.cash -= def.cost;
       const hp = 110 + Math.round(def.cost * 0.08);
       zombie.towers.push({ id: 'tw_' + Date.now() + '_' + Math.floor(Math.random() * 999), kind: kind, x: x, y: y, cool: 8, aim: -Math.PI / 2, hp: hp, maxHp: hp });
       refreshZombieHud();
@@ -4299,7 +4339,7 @@
       if ((zombie.towers || []).some(t => Math.hypot(t.x - x, t.y - y) < 48)) return false;
       if ((zombie.wrecks || []).some(w => Math.hypot(w.x - x, w.y - y) < 48)) return false;
       if ((zombie.walls || []).some(w => w.hp > 0 && distToSeg(x, y, w).d < 22)) return false;
-      return (zombie.cash || 0) >= def.cost;
+      return myZombieCash() >= def.cost;
     }
 
     function drawPlacementPreview() {
@@ -4447,7 +4487,8 @@
         wave: zombie.wave, leftToSpawn: zombie.leftToSpawn, breakTimer: zombie.breakTimer,
         baseHp: zombie.baseHp, baseMax: zombie.baseMax, over: zombie.over,
         wrecks: zombie.wrecks || [], globs: zombie.globs || [],
-        cash: zombie.cash || 0, gems: zombie.gems || 0, owned: zombie.owned || { GUN: true },
+        cash: myZombieCash(), gems: zombie.gems || 0, owned: zombie.owned || { GUN: true },
+        purses: zombie.purses || {}, earned: zombie.earned || {},
         towers: zombie.towers || [], walls: zombie.walls || [], score: localPlayer.score || 0
       };
     }
@@ -4465,7 +4506,7 @@
       if (best) best.textContent = Math.max(accountZombieBest.wave || 0, zombie.bestWave || 0);
       const cash = document.getElementById('hudZombieCash');
       const gems = document.getElementById('hudZombieGems');
-      if (cash) cash.textContent = Math.floor(zombie.cash || 0);
+      if (cash) cash.textContent = Math.floor(myZombieCash());
       if (gems) gems.textContent = Math.floor(zombie.gems || 0);
       refreshTowerShop();
       const infected = document.getElementById('hudInfection');
@@ -4484,12 +4525,14 @@
       zombie.over = !!state.over;
       if (state.wrecks) zombie.wrecks = state.wrecks;
       if (state.globs) zombie.globs = state.globs;
-      if (state.cash != null) zombie.cash = state.cash;
+      if (state.purses) zombie.purses = state.purses;
+      if (state.earned) zombie.earned = state.earned;
+      if (state.earned && state.earned[localPlayer.id] != null) localPlayer.score = Math.round(state.earned[localPlayer.id]);
+      else if (state.cash != null) zombie.cash = state.cash;
       if (state.gems != null) zombie.gems = state.gems;
       if (state.owned) zombie.owned = state.owned;
       if (state.towers) zombie.towers = state.towers;
       if (state.walls) zombie.walls = state.walls;
-      if (typeof state.score === 'number') localPlayer.score = state.score;
       if (zombie.wave !== prev) noteZombieWave();
       refreshZombieHud();
     }
@@ -4596,7 +4639,12 @@
       localPlayer.score = 0;
       towerPick = 'GUN';
       wallAnchor = null;
-      zombie = { wave: 1, leftToSpawn: 8, spawnTimer: 40, breakTimer: 0, baseHp: 800, baseMax: 800, over: false, seenWave: 0, bestScore: bestScore, bestWave: bestWave, globs: [], cash: 80, gems: 0, owned: { GUN: true }, towers: [], walls: [] };
+      const purses = {};
+      const earned = {};
+      purses[localPlayer.id] = ZOMBIE_START_CASH;
+      earned[localPlayer.id] = 0;
+      Object.keys(remotePlayers).forEach(id => { purses[id] = ZOMBIE_START_CASH; earned[id] = 0; });
+      zombie = { wave: 1, leftToSpawn: 8, spawnTimer: 40, breakTimer: 0, baseHp: 800, baseMax: 800, over: false, seenWave: 0, bestScore: bestScore, bestWave: bestWave, globs: [], cash: ZOMBIE_START_CASH, gems: 0, owned: { GUN: true }, towers: [], walls: [], purses: purses, earned: earned };
       zombie.wrecks = [0.32, 0.52, 0.72].map((t, i) => ({
         x: lane.x + lane.w * (i % 2 ? 0.3 : 0.7),
         y: lane.y + 80 + (lane.h - 280) * t
